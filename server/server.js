@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const Question = require('../../../mongodb/database/models/Question');
+const Question = require('../database/models/Question');
 
 const path = require('path');
 dotenv.config({ path: path.join(__dirname, '.env') });
