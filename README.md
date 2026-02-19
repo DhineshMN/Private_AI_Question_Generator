@@ -53,12 +53,13 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 
 2. **Frontend Setup**:
    ```bash
+   cd client/src/frontend
    npm install
    ```
 
 3. **Backend Setup**:
    ```bash
-   cd server
+   cd server/src/backend
    npm install
    ```
 
@@ -75,13 +76,13 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 
 1. **Start the Backend Server**:
    ```bash
-   cd server
+   cd server/src/backend
    node server.js
    ```
 
 2. **Start the Frontend (Vite Dev Server)**:
    ```bash
-   # From the root directory
+   cd client/src/frontend
    npm run dev
    ```
 
@@ -96,16 +97,27 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 
 ```text
 mcq-1/
-├── src/
-│   ├── main.js        # Core Application Logic & State Engine
-│   ├── style.css      # Custom Design System & Glassmorphism
-│   └── data.js        # Fallback Mock Data
+├── client/
+│   └── src/
+│       └── frontend/
+│           ├── index.html        # Main Entry Point
+│           ├── package.json      # Frontend Dependencies
+│           └── src/
+│               ├── main.js       # Core Application Logic
+│               ├── style.css     # Design System
+│               └── data.js       # Mock Data
 ├── server/
-│   ├── models/        # Mongoose Schemas (Question.js)
-│   ├── server.js      # Express API Endpoints
-│   └── .env           # (Not in repo) Backend Configuration
-├── index.html         # Main Entry Point
-└── package.json       # Project Dependencies
+│   └── src/
+│       └── backend/
+│           ├── server.js         # API Server
+│           ├── package.json      # Backend Dependencies
+│           └── .env              # Backend Environment
+└── mongodb/
+    └── database/
+        └── models/
+            └── Question.js       # Mongoose Schema
+├── TECHNICAL_HANDOVER.md
+└── README.md
 ```
 
 ---
