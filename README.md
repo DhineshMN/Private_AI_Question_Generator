@@ -53,22 +53,33 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 
 2. **Frontend Setup**:
    ```bash
-   cd client/src/frontend
+   cd client
    npm install
    ```
 
 3. **Backend Setup**:
    ```bash
-   cd server/src/backend
+   cd ../server
    npm install
    ```
 
 4. **Environment Configuration**:
+   
+   **Server (.env)**
    Create a `.env` file in the `server` directory:
    ```env
    MONGO_URI=mongodb://localhost:27017/mcq-db
    PORT=5000
    ```
+
+   **Client (.env) - API Key Security**
+   Authentication is handled securely via the client.
+   - Rename `client/.env.example` to `client/.env`.
+   - Add your **Groq API Key** (starts with `gsk_...`).
+   ```env
+   VITE_GROQ_API_KEY=gsk_your_key_here
+   ```
+   > **Note:** You can also configure this directly in the application UI (Admin > Settings), which will automatically save it to your local system securely.
 
 ---
 
@@ -76,20 +87,18 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 
 1. **Start the Backend Server**:
    ```bash
-   cd server/src/backend
+   cd server
    node server.js
    ```
 
 2. **Start the Frontend (Vite Dev Server)**:
    ```bash
-   cd client/src/frontend
+   cd client
    npm run dev
    ```
 
-3. **Configure API Key**:
-   - Open the app in your browser.
-   - Navigate to the **Admin Portal** -> **Settings**.
-   - Paste your **Groq API Key** and click Save.
+3. **Open the App**:
+   Visit `http://localhost:5173` in your browser.
 
 ---
 
@@ -98,24 +107,21 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 ```text
 mcq-1/
 ├── client/
+│   ├── .env              # Local API Key Storage (Not committed)
+│   ├── .env.example      # Template for API Key config
+│   ├── index.html        # Main Entry Point
+│   ├── package.json      # Frontend Dependencies
 │   └── src/
-│       └── frontend/
-│           ├── index.html        # Main Entry Point
-│           ├── package.json      # Frontend Dependencies
-│           └── src/
-│               ├── main.js       # Core Application Logic
-│               ├── style.css     # Design System
-│               └── data.js       # Mock Data
+│       ├── main.js       # Core Application Logic
+│       ├── style.css     # Design System
+│       └── data.js       # Mock Data
 ├── server/
-│   └── src/
-│       └── backend/
-│           ├── server.js         # API Server
-│           ├── package.json      # Backend Dependencies
-│           └── .env              # Backend Environment
-└── mongodb/
-    └── database/
-        └── models/
-            └── Question.js       # Mongoose Schema
+│   ├── server.js         # API Server
+│   ├── package.json      # Backend Dependencies
+│   ├── .env              # Backend Environment
+│   └── database/
+│       └── models/
+│           └── Question.js
 ├── TECHNICAL_HANDOVER.md
 └── README.md
 ```
