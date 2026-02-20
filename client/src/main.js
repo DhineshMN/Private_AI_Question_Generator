@@ -22,8 +22,8 @@ const state = {
   language: 'python',
   category: 'subjects',
   subtopic: 'Data Structures',
-  groqKey: localStorage.getItem('groq_key') || '',
-  groqModel: localStorage.getItem('groq_model') || 'llama-3.3-70b-versatile',
+  groqKey: localStorage.getItem('groq_key') || import.meta.env.VITE_GROQ_API_KEY || '',
+  groqModel: localStorage.getItem('groq_model') || import.meta.env.VITE_GROQ_MODEL || 'llama-3.3-70b-versatile',
   codingResults: [], // Track pass/fail for each problem
   codingHints: [], // Store AI hints
 };
@@ -832,7 +832,7 @@ function attachAdminListeners() {
   // Settings listeners
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   if (saveSettingsBtn) {
-    saveSettingsBtn.addEventListener('click', () => {
+    saveSettingsBtn.addEventListener('click', async () => {
       const key = document.getElementById('groq-api-key').value.trim();
       const model = document.getElementById('groq-model-select').value;
 
@@ -842,12 +842,36 @@ function attachAdminListeners() {
       localStorage.setItem('groq_key', key);
       localStorage.setItem('groq_model', model);
 
-      showToast('success', 'Settings saved successfully!');
+      saveSettingsBtn.disabled = true;
+      saveSettingsBtn.innerHTML = '💾 Saving...';
+
+      try {
+        // Also save to server for permanent persistence
+        const response = await fetch('http://localhost:5000/api/settings/save-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key, model: model })
+        });
+
+        if (response.ok) {
+          showToast('success', 'Settings saved to System & Browser!');
+        } else {
+          showToast('warning', 'Saved to Browser, but Server sync failed.');
+        }
+      } catch (err) {
+        console.error('Server sync failed', err);
+        showToast('warning', 'Saved to Browser only (Server offline?)');
+      } finally {
+        saveSettingsBtn.disabled = false;
+        saveSettingsBtn.innerHTML = 'Save';
+      }
     });
   }
 }
 
 async function handleGenerateClick() {
+  // Check if key is in state OR if we should try to use server-side proxy (future feature)
+  // For now, we still need the key in the frontend state for the direct API calls
   if (!state.groqKey) {
     showToast('error', 'Groq API Key missing! Please add it in Settings.');
     const settingsTab = document.querySelector('[data-tab="settings"]');
