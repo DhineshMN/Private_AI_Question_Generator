@@ -26,6 +26,7 @@ const state = {
   groqModel: localStorage.getItem('groq_model') || import.meta.env.VITE_GROQ_MODEL || 'llama-3.3-70b-versatile',
   codingResults: [], // Track pass/fail for each problem
   codingHints: [], // Store AI hints
+  savedQuestions: [], // Cache for admin view
 };
 
 // =============================================
@@ -231,28 +232,28 @@ function renderAdminPage() {
             <div class="stat-box">
               <div class="stat-icon">👤</div>
               <div class="stat-info">
-                <div class="stat-value">1,248</div>
+                <div class="stat-value" id="stat-total-users">0</div>
                 <div class="stat-label">Total Users</div>
               </div>
             </div>
             <div class="stat-box">
               <div class="stat-icon">📝</div>
               <div class="stat-info">
-                <div class="stat-value">458</div>
+                <div class="stat-value" id="stat-mcq-count">0</div>
                 <div class="stat-label">MCQ Questions</div>
               </div>
             </div>
             <div class="stat-box">
               <div class="stat-icon">💻</div>
               <div class="stat-info">
-                <div class="stat-value">82</div>
+                <div class="stat-value" id="stat-coding-count">0</div>
                 <div class="stat-label">Coding Problems</div>
               </div>
             </div>
             <div class="stat-box">
               <div class="stat-icon">✅</div>
               <div class="stat-info">
-                <div class="stat-value">98.5%</div>
+                <div class="stat-value">99.9%</div>
                 <div class="stat-label">Uptime</div>
               </div>
             </div>
@@ -744,10 +745,15 @@ function attachAdminListeners() {
         activeTab.classList.add('active');
         if (tabId === 'questions') {
           fetchAndRenderSavedQuestions();
+        } else if (tabId === 'dashboard') {
+          updateDashboardStats();
         }
       }
     });
   });
+
+  // Initial stats load
+  updateDashboardStats();
 
   const refreshBtn = document.getElementById('refresh-questions-btn');
   if (refreshBtn) {
@@ -786,6 +792,7 @@ function attachAdminListeners() {
           const data = await response.json();
           showToast('success', data.message);
           saveBtn.innerHTML = `✅ Saved to Database`;
+          updateDashboardStats();
         } catch (error) {
           console.error(error);
           showToast('error', 'Database Save Failed: ' + error.message);
@@ -1159,12 +1166,15 @@ function renderGeneratedPreview(questions, type) {
   container.querySelectorAll('.preview-detail-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = e.target.closest('.preview-detail-btn').dataset.index;
-      showQuestionDetailModal(questions[idx], type);
+      showQuestionDetailModal(questions[idx], type, (updated) => {
+        state.lastGenerated[idx] = updated;
+        renderGeneratedPreview(state.lastGenerated, type);
+      });
     });
   });
 }
 
-function showQuestionDetailModal(q, type) {
+function showQuestionDetailModal(q, type, onSave) {
   let modal = document.getElementById('preview-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -1262,32 +1272,58 @@ function showQuestionDetailModal(q, type) {
   document.getElementById('modal-cancel-btn').onclick = closeMod;
 
   document.getElementById('modal-save-btn').onclick = () => {
-    // Update the question object in state
-    q.smeName = document.getElementById('edit-sme').value;
-    q.difficulty = document.getElementById('edit-difficulty').value;
-    q.category = document.getElementById('edit-category').value;
-    q.subtopic = document.getElementById('edit-subtopic').value;
+    const updated = { ...q };
+    updated.smeName = document.getElementById('edit-sme').value;
+    updated.difficulty = document.getElementById('edit-difficulty').value;
+    updated.category = document.getElementById('edit-category').value;
+    updated.subtopic = document.getElementById('edit-subtopic').value;
 
     if (type === 'mcq') {
-      q.question = document.getElementById('edit-question').value;
-      q.correct = parseInt(document.querySelector('input[name="edit-correct"]:checked').value);
-      q.options = Array.from(document.querySelectorAll('.edit-opt-val')).map(el => el.value);
+      updated.question = document.getElementById('edit-question').value;
+      updated.correct = parseInt(document.querySelector('input[name="edit-correct"]:checked').value);
+      updated.options = Array.from(document.querySelectorAll('.edit-opt-val')).map(el => el.value);
     } else {
-      q.title = document.getElementById('edit-title').value;
-      q.description = document.getElementById('edit-desc').value;
-      q.starterCode = document.getElementById('edit-starter').value;
-      q.input = document.getElementById('edit-input').value;
-      q.output = document.getElementById('edit-output').value;
-      q.timeLimit = document.getElementById('edit-timer').value;
+      updated.title = document.getElementById('edit-title').value;
+      updated.description = document.getElementById('edit-desc').value;
+      updated.starterCode = document.getElementById('edit-starter').value;
+      updated.input = document.getElementById('edit-input').value;
+      updated.output = document.getElementById('edit-output').value;
+      updated.timeLimit = document.getElementById('edit-timer').value;
     }
 
-    renderGeneratedPreview(state.lastGenerated, type);
-    showToast('success', 'Changes saved successfully!');
+    if (onSave) onSave(updated);
     closeMod();
   };
 
   modal.onclick = (e) => { if (e.target === modal) closeMod(); };
 }
+
+window.editSavedQuestion = async (mongoId) => {
+  const q = state.savedQuestions.find(it => it._id === mongoId);
+  if (!q) {
+    showToast('error', 'Question not found in local cache');
+    return;
+  }
+
+  showQuestionDetailModal(q, q.type, async (updated) => {
+    try {
+      const resp = await fetch(`http://localhost:5000/api/questions/${mongoId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+
+      if (!resp.ok) throw new Error('Failed to update question');
+
+      showToast('success', 'Question updated in database!');
+      fetchAndRenderSavedQuestions(); // Refresh list
+      updateDashboardStats();
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Update failed: ' + err.message);
+    }
+  });
+};
 
 // =============================================
 // START TEST
@@ -1898,6 +1934,26 @@ function showToast(type, message) {
 // =============================================
 // MONGODB MANAGEMENT
 // =============================================
+async function updateDashboardStats() {
+  const mcqEl = document.getElementById('stat-mcq-count');
+  const codingEl = document.getElementById('stat-coding-count');
+  const userEl = document.getElementById('stat-total-users');
+
+  if (!mcqEl) return;
+
+  try {
+    const response = await fetch('http://localhost:5000/api/stats');
+    if (!response.ok) throw new Error();
+    const data = await response.json();
+
+    mcqEl.textContent = data.mcqCount.toLocaleString();
+    codingEl.textContent = data.codingCount.toLocaleString();
+    userEl.textContent = data.totalUsers.toLocaleString();
+  } catch (err) {
+    console.warn('Failed to fetch stats', err);
+  }
+}
+
 async function fetchAndRenderSavedQuestions() {
   const container = document.getElementById('questions-table-container');
   if (!container) return;
@@ -1914,6 +1970,7 @@ async function fetchAndRenderSavedQuestions() {
     if (!response.ok) throw new Error('Failed to fetch from server');
 
     const questions = await response.json();
+    state.savedQuestions = questions; // Cache in state
 
     if (questions.length === 0) {
       container.innerHTML = `
@@ -1947,7 +2004,10 @@ async function fetchAndRenderSavedQuestions() {
                 <td><span class="diff-tag ${q.difficulty}">${q.difficulty}</span></td>
                 <td>${q.smeName || 'System'}</td>
                 <td>
-                  <button class="btn btn-secondary btn-sm" onclick="this.disabled=true; deleteSavedQuestion('${q._id}')">🗑️ Delete</button>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="editSavedQuestion('${q._id}')">👁️ View</button>
+                    <button class="btn btn-danger btn-sm" onclick="this.disabled=true; deleteSavedQuestion('${q._id}')">🗑️ Delete</button>
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -1967,10 +2027,8 @@ async function fetchAndRenderSavedQuestions() {
   }
 }
 
-async function deleteSavedQuestion(mongoId) {
+window.deleteSavedQuestion = async (mongoId) => {
   try {
-    // Note: We don't have a specific delete endpoint yet in server.js, 
-    // but we can add it or just show an error if it fails.
     const response = await fetch(`http://localhost:5000/api/questions/${mongoId}`, {
       method: 'DELETE'
     });
@@ -1984,15 +2042,16 @@ async function deleteSavedQuestion(mongoId) {
         setTimeout(() => row.remove(), 400);
       }
       showToast('success', 'Question deleted successfully');
+      updateDashboardStats();
     } else {
-      throw new Error('Delete endpoint not implemented or failed');
+      throw new Error('Delete failed');
     }
   } catch (error) {
     console.error(error);
     showToast('error', 'Failed to delete: ' + error.message);
     fetchAndRenderSavedQuestions(); // Refresh to restore UI state
   }
-}
+};
 
 // =============================================
 // INIT

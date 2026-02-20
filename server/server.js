@@ -31,6 +31,17 @@ app.get('/api/questions', async (req, res) => {
     }
 });
 
+app.get('/api/stats', async (req, res) => {
+    try {
+        const mcqCount = await Question.countDocuments({ type: 'mcq' });
+        const codingCount = await Question.countDocuments({ type: 'coding' });
+        const totalUsers = 1248; // Placeholder for now
+        res.json({ mcqCount, codingCount, totalUsers });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/questions/bulk', async (req, res) => {
     try {
         const { questions, type } = req.body;
@@ -104,6 +115,15 @@ app.post('/api/settings/save-key', async (req, res) => {
     } catch (error) {
         console.error('❌ Failed to save .env:', error);
         res.status(500).json({ error: 'Failed to save settings to server storage' });
+    }
+});
+
+app.put('/api/questions/:id', async (req, res) => {
+    try {
+        const updated = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.json({ message: 'Question updated successfully', data: updated });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
