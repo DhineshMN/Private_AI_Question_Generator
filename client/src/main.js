@@ -27,6 +27,8 @@ const state = {
   codingResults: [], // Track pass/fail for each problem
   codingHints: [], // Store AI hints
   savedQuestions: [], // Cache for admin view
+  smes: [], // SME Profiles from MongoDB
+  activeSmeId: localStorage.getItem('active_sme_id') || null,
 };
 
 // =============================================
@@ -322,9 +324,12 @@ function renderAdminPage() {
                 </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Authorized SME Name</label>
-                <input type="text" class="form-input" id="gen-sme" placeholder="Enter your name (e.g. Dr. Smith)...">
+              <div class="form-group" style="padding: 12px; background: rgba(99, 102, 241, 0.05); border: 1px dashed var(--primary); border-radius: var(--radius-md); text-align: center;">
+                <label class="form-label" style="margin-bottom: 5px;">Active SME Watermark</label>
+                <div id="active-sme-name-display" style="font-weight: 700; color: var(--primary-light);">
+                  ${state.activeSmeId ? (state.smes.find(s => s._id === state.activeSmeId)?.name || 'Loading SME...') : '❌ No SME Selected'}
+                </div>
+                <p style="font-size: 0.7rem; margin-top: 5px; opacity: 0.6;">Select SME in Settings to apply watermark</p>
               </div>
 
               <button class="btn btn-primary btn-lg w-full" id="generate-questions-btn" style="margin-top: 8px;">
@@ -370,32 +375,57 @@ function renderAdminPage() {
         <!-- Settings Tab -->
         <div id="tab-settings" class="admin-tab">
            <header class="admin-header">
-            <h2 class="admin-title">Admin Settings</h2>
+            <h2 class="admin-title">SME & API Configurations</h2>
+            <p class="admin-subtitle">Manage multiple SME profiles and their associated API keys</p>
           </header>
-          <div class="card card-glass" style="max-width: 600px;">
-            <div class="form-group">
-              <label class="form-label">Groq API Key</label>
-              <div style="display: flex; gap: 10px;">
-                <input type="password" class="form-input" id="groq-api-key" placeholder="gsk_..." value="${state.groqKey}" style="flex: 1;">
-                <button class="btn btn-primary btn-sm" id="save-settings-btn">Save</button>
+
+          <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px; align-items: start;">
+            <!-- Register New SME -->
+            <div class="card card-glass">
+              <h3 style="margin-bottom: 20px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
+                <span>📝</span> Register SME Profile
+              </h3>
+              <div class="form-group">
+                <label class="form-label">SME Full Name</label>
+                <input type="text" class="form-input" id="sme-reg-name" placeholder="e.g. Likhitha ...">
               </div>
-              <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px;">
-                Get your free API key at <a href="https://console.groq.com/keys" target="_blank" style="color: var(--primary-light); text-decoration: underline;">Groq Console</a>.
-              </p>
+              <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label">Groq API Key</label>
+                <input type="password" class="form-input" id="sme-reg-key" placeholder="gsk_...">
+              </div>
+              <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label">Preferred AI Model</label>
+                <select class="form-select" id="sme-reg-model">
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile)</option>
+                  <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast)</option>
+                  <option value="mixtral-8x7b-32768">Mixtral 8x7B (Deep)</option>
+                </select>
+              </div>
+              <button class="btn btn-primary w-full" id="sme-reg-btn" style="margin-top: 25px;">
+                ✨ Add SME Profile
+              </button>
             </div>
-            <div class="form-group" style="margin-top: 24px;">
-              <label class="form-label">AI Model</label>
-              <select class="form-select" id="groq-model-select" style="width: 100%;">
-                <option value="llama-3.3-70b-versatile" ${state.groqModel === 'llama-3.3-70b-versatile' ? 'selected' : ''}>Llama 3.3 70B (SOTA / Versatile)</option>
-                <option value="llama-3.1-8b-instant" ${state.groqModel === 'llama-3.1-8b-instant' ? 'selected' : ''}>Llama 3.1 8B (Fast / Lightweight)</option>
-                <option value="mixtral-8x7b-32768" ${state.groqModel === 'mixtral-8x7b-32768' ? 'selected' : ''}>Mixtral 8x7B (High Context)</option>
-              </select>
+
+            <!-- SME Profiles List -->
+            <div class="card card-glass">
+              <h3 style="margin-bottom: 20px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
+                <span>👥</span> Managed SME Profiles
+              </h3>
+              <div id="sme-list-container" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- SME profiles rendered here -->
+                <div style="text-align: center; padding: 40px; opacity: 0.5;">
+                  <span class="spinner"></span>
+                  <p>Loading profiles...</p>
+                </div>
+              </div>
             </div>
-            <div style="margin-top: 30px; padding: 15px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; border-left: 4px solid var(--primary);">
-              <p style="font-size: 0.85rem; line-height: 1.5;">
-                <strong>💡 Note:</strong> Your API key is stored locally in your browser and is only used to make requests to Groq. 
-              </p>
-            </div>
+          </div>
+
+          <div style="margin-top: 30px; padding: 20px; background: rgba(99, 102, 241, 0.05); border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.2); display: flex; align-items: flex-start; gap: 15px;">
+             <span style="font-size: 1.5rem;">🔑</span>
+             <p style="font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary);">
+               <strong>Data Privacy & Security:</strong> All API keys are stored in your private MongoDB instance. When generating questions, the selected SME's key is used to authenticate requests. Each generated question is automatically <strong>watermarked</strong> with the SME's name and a <strong>timestamp</strong>.
+             </p>
           </div>
         </div>
       </main>
@@ -747,6 +777,8 @@ function attachAdminListeners() {
           fetchAndRenderSavedQuestions();
         } else if (tabId === 'dashboard') {
           updateDashboardStats();
+        } else if (tabId === 'settings') {
+          fetchAndRenderSMEs();
         }
       }
     });
@@ -754,6 +786,44 @@ function attachAdminListeners() {
 
   // Initial stats load
   updateDashboardStats();
+
+  // SME Registration
+  const smeRegBtn = document.getElementById('sme-reg-btn');
+  if (smeRegBtn) {
+    smeRegBtn.addEventListener('click', async () => {
+      const name = document.getElementById('sme-reg-name').value.trim();
+      const apiKey = document.getElementById('sme-reg-key').value.trim();
+      const model = document.getElementById('sme-reg-model').value;
+
+      if (!name || !apiKey) {
+        showToast('error', 'Name and API Key are required');
+        return;
+      }
+
+      smeRegBtn.disabled = true;
+      smeRegBtn.textContent = 'Registering...';
+
+      try {
+        const response = await fetch('http://localhost:5000/api/smes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, apiKey, model })
+        });
+
+        if (!response.ok) throw new Error('Failed to register SME');
+
+        showToast('success', 'SME Profile Registered!');
+        document.getElementById('sme-reg-name').value = '';
+        document.getElementById('sme-reg-key').value = '';
+        fetchAndRenderSMEs();
+      } catch (error) {
+        showToast('error', error.message);
+      } finally {
+        smeRegBtn.disabled = false;
+        smeRegBtn.textContent = '✨ Add SME Profile';
+      }
+    });
+  }
 
   const refreshBtn = document.getElementById('refresh-questions-btn');
   if (refreshBtn) {
@@ -893,7 +963,13 @@ async function handleGenerateClick() {
   const type = activeSegment ? activeSegment.dataset.value : 'mcq';
   const difficulty = document.getElementById('gen-difficulty').value;
   const count = parseInt(document.getElementById('gen-count').value);
-  const smeName = document.getElementById('gen-sme').value || 'System Default';
+
+  const activeSme = state.smes.find(s => s._id === state.activeSmeId);
+  if (!activeSme) {
+    showToast('error', 'Please select an SME profile in Settings first!');
+    return;
+  }
+  const smeName = activeSme.name;
 
   const finalTopic = specificTopic ? `${subtopic} (${specificTopic})` : subtopic;
 
@@ -912,11 +988,25 @@ async function handleGenerateClick() {
 
   try {
     const generated = await generateAIQuestions(finalTopic, type, difficulty, count, category, subtopic, smeName);
+
+    // Apply Auto-Watermarking & Metadata
+    const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    generated.forEach(q => {
+      q.smeName = smeName;
+      q.createdAt = new Date().toISOString();
+      q.watermark = `Verified by SME: ${smeName} | ${timestamp}`;
+      q.id = Math.floor(Math.random() * 90000) + 10000;
+      q.category = category;
+      q.subtopic = subtopic;
+      q.difficulty = difficulty;
+      q.type = type;
+    });
+
     state.lastGenerated = generated;
     state.lastGeneratedType = type;
 
     renderGeneratedPreview(generated, type);
-    showToast('success', `AI generated ${count} questions successfully!`);
+    showToast('success', `AI generated ${count} questions with SME watermarks!`);
   } catch (error) {
     console.error(error);
     showToast('error', 'AI Generation Failed: ' + error.message);
@@ -1257,6 +1347,12 @@ function showQuestionDetailModal(q, type, onSave) {
             </div>
           </div>
         `}
+        <div class="form-group" style="margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+          <label class="form-label" style="opacity: 0.6;">System Watermark & Integrity</label>
+          <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--primary-light); word-break: break-all;">
+            ${q.watermark || 'No watermark applied (System Default)'}
+          </div>
+        </div>
       </div>
       <div class="modal-footer" style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 20px;">
         <button class="btn btn-secondary" id="modal-cancel-btn">Discard Changes</button>
@@ -2002,7 +2098,12 @@ async function fetchAndRenderSavedQuestions() {
                 <td><span class="badge badge-${q.type}">${q.type.toUpperCase()}</span></td>
                 <td><div style="font-weight: 600;">${q.subtopic}</div><div style="font-size: 0.75rem; opacity: 0.7;">${q.title || q.question.substring(0, 40) + '...'}</div></td>
                 <td><span class="diff-tag ${q.difficulty}">${q.difficulty}</span></td>
-                <td>${q.smeName || 'System'}</td>
+                <td>
+                  <div style="font-weight: 500;">${q.smeName || 'System'}</div>
+                  <div style="font-size: 0.65rem; opacity: 0.5; font-family: var(--font-mono); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${q.watermark || 'System Verified'}">
+                    ${q.watermark ? q.watermark.split('|')[1]?.trim() || 'Verified' : 'N/A'}
+                  </div>
+                </td>
                 <td>
                   <div style="display: flex; gap: 8px;">
                     <button class="btn btn-secondary btn-sm" onclick="editSavedQuestion('${q._id}')">👁️ View</button>
@@ -2050,6 +2151,87 @@ window.deleteSavedQuestion = async (mongoId) => {
     console.error(error);
     showToast('error', 'Failed to delete: ' + error.message);
     fetchAndRenderSavedQuestions(); // Refresh to restore UI state
+  }
+};
+
+// =============================================
+// SME MANAGEMENT
+// =============================================
+async function fetchAndRenderSMEs() {
+  const container = document.getElementById('sme-list-container');
+  if (!container) return;
+
+  try {
+    const response = await fetch('http://localhost:5000/api/smes');
+    const smes = await response.json();
+    state.smes = smes;
+
+    if (smes.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; opacity: 0.5;">
+          <p>No SME profiles found. Add one to get started!</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = smes.map(sme => `
+      <div class="sme-profile-item card-glass ${state.activeSmeId === sme._id ? 'active' : ''}" 
+           style="padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; border: 1px solid ${state.activeSmeId === sme._id ? 'var(--primary)' : 'var(--border)'}; background: ${state.activeSmeId === sme._id ? 'rgba(99, 102, 241, 0.1)' : 'transparent'};">
+        <div style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1;" onclick="setActiveSME('${sme._id}')">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: ${state.activeSmeId === sme._id ? 'var(--grad-primary)' : 'rgba(255,255,255,0.1)'}; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">
+            ${sme.name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 0.9rem;">${sme.name}</div>
+            <div style="font-size: 0.75rem; opacity: 0.6;">${sme.model} • gsk_...${sme.apiKey.slice(-4)}</div>
+          </div>
+        </div>
+        <button class="btn btn-sm" style="background: none; border: none; padding: 0; color: var(--danger-light); opacity: 0.5;" onclick="deleteSME('${sme._id}')">🗑️</button>
+      </div>
+    `).join('');
+  } catch (error) {
+    container.innerHTML = `<p style="color: var(--danger-light);">Error: ${error.message}</p>`;
+  }
+}
+
+window.setActiveSME = (id) => {
+  state.activeSmeId = id;
+  localStorage.setItem('active_sme_id', id);
+
+  // Update state with active SME credentials
+  const sme = state.smes.find(s => s._id === id);
+  if (sme) {
+    state.groqKey = sme.apiKey;
+    state.groqModel = sme.model;
+  }
+
+  fetchAndRenderSMEs();
+
+  // Update UI displays
+  const display = document.getElementById('active-sme-name-display');
+  if (display) {
+    display.textContent = sme ? sme.name : '❌ No SME Selected';
+  }
+
+  showToast('success', 'Active SME updated');
+};
+
+window.deleteSME = async (id) => {
+  if (!confirm('Are you sure you want to delete this SME profile?')) return;
+
+  try {
+    const response = await fetch(`http://localhost:5000/api/smes/${id}`, { method: 'DELETE' });
+    if (response.ok) {
+      if (state.activeSmeId === id) {
+        state.activeSmeId = null;
+        localStorage.removeItem('active_sme_id');
+      }
+      showToast('success', 'Profile deleted');
+      fetchAndRenderSMEs();
+    }
+  } catch (error) {
+    showToast('error', 'Delete failed');
   }
 };
 
