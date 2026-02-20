@@ -6,32 +6,8 @@ const dotenv = require('dotenv');
 const path = require('path');
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// Define Question schema inline so it uses THIS mongoose instance (the connected one).
-// This avoids the dual-mongoose-instance bug where the external model's mongoose
-// is different from the connected one, causing insertMany() to buffer forever.
-const QuestionSchema = new mongoose.Schema({
-    id: { type: Number, required: true },
-    category: { type: String, required: true },
-    subtopic: { type: String, required: true },
-    difficulty: { type: String, required: true },
-    type: { type: String, enum: ['mcq', 'coding'], required: true },
-    smeName: { type: String },
-    // MCQ fields
-    question: { type: String },
-    options: [{ type: String }],
-    correct: { type: Number },
-    explanation: { type: String },
-    // Coding fields
-    title: { type: String },
-    description: { type: String },
-    starterCode: { type: mongoose.Schema.Types.Mixed },
-    input: { type: String },
-    output: { type: String },
-    timeLimit: { type: String },
-    constraints: [{ type: String }],
-    createdAt: { type: Date, default: Date.now }
-});
-const Question = mongoose.model('Question', QuestionSchema);
+// Import Question model
+const Question = require('./database/models/Question');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
