@@ -6,8 +6,9 @@ const dotenv = require('dotenv');
 const path = require('path');
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-// Import Question model
+// Import models
 const Question = require('./database/models/Question');
+const SME = require('./database/models/SME');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -153,6 +154,38 @@ app.put('/api/questions/:id', async (req, res) => {
     try {
         const updated = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
         res.json({ message: 'Question updated successfully', data: updated });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// SME Management Routes
+app.get('/api/smes', async (req, res) => {
+    try {
+        const smes = await SME.find().sort({ createdAt: -1 });
+        res.json(smes);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/smes', async (req, res) => {
+    try {
+        const { name, apiKey, model } = req.body;
+        if (!name || !apiKey) return res.status(400).json({ error: 'Name and API Key are required' });
+
+        const newSme = new SME({ name, apiKey, model });
+        await newSme.save();
+        res.status(201).json({ message: 'SME profile saved successfully', data: newSme });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/smes/:id', async (req, res) => {
+    try {
+        await SME.findByIdAndDelete(req.params.id);
+        res.json({ message: 'SME profile deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

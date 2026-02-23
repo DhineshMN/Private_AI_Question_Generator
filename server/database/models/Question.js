@@ -7,6 +7,7 @@ const QuestionSchema = new mongoose.Schema({
     difficulty: { type: String, required: true },
     type: { type: String, enum: ['mcq', 'coding'], required: true },
     smeName: { type: String },
+    watermark: { type: String },
 
     // MCQ specific fields
     question: { type: String },
