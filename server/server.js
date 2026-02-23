@@ -35,8 +35,39 @@ app.get('/api/stats', async (req, res) => {
     try {
         const mcqCount = await Question.countDocuments({ type: 'mcq' });
         const codingCount = await Question.countDocuments({ type: 'coding' });
-        const totalUsers = 1248; // Placeholder for now
-        res.json({ mcqCount, codingCount, totalUsers });
+
+        // Difficulty breakdown
+        const easyCount = await Question.countDocuments({ difficulty: 'easy' });
+        const mediumCount = await Question.countDocuments({ difficulty: 'medium' });
+        const hardCount = await Question.countDocuments({ difficulty: 'hard' });
+
+        // Topic distribution (Top 5)
+        const topicStats = await Question.aggregate([
+            { $group: { _id: "$subtopic", count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 5 }
+        ]);
+
+        // Recent activity (Last 5 questions)
+        const recentQuestions = await Question.find()
+            .sort({ _id: -1 })
+            .limit(5)
+            .select('subtopic type difficulty createdAt');
+
+        // SME Contributions
+        const smeStats = await Question.aggregate([
+            { $group: { _id: "$smeName", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]);
+
+        res.json({
+            mcqCount,
+            codingCount,
+            difficulty: { easy: easyCount, medium: mediumCount, hard: hardCount },
+            topTopics: topicStats,
+            recentActivity: recentQuestions,
+            smeStats: smeStats
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

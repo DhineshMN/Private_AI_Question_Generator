@@ -222,47 +222,118 @@ function renderAdminPage() {
         <!-- Dashboard Tab -->
         <div id="tab-dashboard" class="admin-tab active">
           <header class="admin-header">
-            <h2 class="admin-title">Dashboard Overview</h2>
+            <div>
+              <h2 class="admin-title">Dashboard Overview</h2>
+              <p class="admin-subtitle">Real-time database insights and system status</p>
+            </div>
             <div class="admin-actions">
+              <span id="dashboard-last-updated" style="font-size: 0.75rem; opacity: 0.5; margin-right: 15px;">Last synced: Just now</span>
               <span class="status-badge">🟢 System Online</span>
             </div>
           </header>
           
+          <!-- Primary Stats -->
           <div class="admin-stats-grid">
-            <div class="stat-box">
-              <div class="stat-icon">👤</div>
+            <div class="stat-box main-stat">
+              <div class="stat-icon">📊</div>
               <div class="stat-info">
-                <div class="stat-value" id="stat-total-users">0</div>
-                <div class="stat-label">Total Users</div>
+                <div class="stat-value" id="stat-total-questions">0</div>
+                <div class="stat-label">Total Questions</div>
               </div>
             </div>
             <div class="stat-box">
               <div class="stat-icon">📝</div>
               <div class="stat-info">
                 <div class="stat-value" id="stat-mcq-count">0</div>
-                <div class="stat-label">MCQ Questions</div>
+                <div class="stat-label">MCQ Bank</div>
               </div>
             </div>
             <div class="stat-box">
               <div class="stat-icon">💻</div>
               <div class="stat-info">
                 <div class="stat-value" id="stat-coding-count">0</div>
-                <div class="stat-label">Coding Problems</div>
+                <div class="stat-label">Coding Bank</div>
               </div>
             </div>
             <div class="stat-box">
-              <div class="stat-icon">✅</div>
+              <div class="stat-icon">🎓</div>
               <div class="stat-info">
-                <div class="stat-value">99.9%</div>
-                <div class="stat-label">Uptime</div>
+                <div class="stat-value" id="stat-sme-count">0</div>
+                <div class="stat-label">Total SMEs</div>
               </div>
             </div>
           </div>
 
+          <div class="dashboard-grid">
+            <!-- SME Contributions Section (Primary) -->
+            <div class="card card-glass sme-card-v2">
+              <div class="card-header-v2">
+                <div class="card-header-left">
+                  <span class="card-icon-v2">✍️</span>
+                  <div>
+                    <p class="card-title-v2">SME Leaderboard</p>
+                    <p class="card-subtitle-v2">Expert contributions to the question bank</p>
+                  </div>
+                </div>
+                <div class="search-box-v2">
+                  <input type="text" id="sme-search" placeholder="Filter by expert...">
+                </div>
+              </div>
+              <div class="sme-list-v2" id="dashboard-sme-stats">
+                <div class="loading-state">
+                  <span class="spinner-sm"></span> Syncing experts...
+                </div>
+              </div>
+            </div>
+
+            <!-- Side Metrics Column -->
+            <div class="metrics-column">
+              <!-- Content Mix Card -->
+              <div class="card card-glass metric-mini-card">
+                <p class="metric-title">📚 Content Mix</p>
+                <div class="metric-visual" id="content-mix-chart">
+                  <div class="mix-info">
+                    <span id="mix-mcq-label">MCQs: --%</span>
+                    <span id="mix-coding-label">Coding: --%</span>
+                  </div>
+                  <div class="progress-bar-wrap mix-bar">
+                    <div class="progress-bar-fill mcq-fill" id="mix-mcq-bar" style="width: 50%"></div>
+                    <div class="progress-bar-fill coding-fill" id="mix-coding-bar" style="width: 50%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Database Health Card -->
+              <div class="card card-glass metric-mini-card" style="margin-top: 20px;">
+                <p class="metric-title">🛡️ System Status</p>
+                <div class="status-grid-v2">
+                  <div class="status-item-v2">
+                    <span class="status-dot online"></span>
+                    <span>MongoDB Connection</span>
+                  </div>
+                  <div class="status-item-v2">
+                    <span class="status-dot online"></span>
+                    <span>AI Provider (Groq)</span>
+                  </div>
+                  <div class="status-item-v2">
+                    <span class="status-dot online"></span>
+                    <span>API Endpoint</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
           <div class="card card-glass" style="margin-top: 24px;">
-            <p class="card-title">Recent Activity</p>
-            <div style="opacity: 0.7; padding: 20px; text-align: center;">
-              No recent activity to display.
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <p class="card-title" style="margin-bottom: 0;">⚡ Recent Activity</p>
+              <button class="btn btn-secondary btn-sm" id="dashboard-view-all-btn">View All</button>
+            </div>
+            <div id="dashboard-recent-activity">
+              <div style="opacity: 0.7; padding: 40px; text-align: center;">
+                <span class="spinner-sm"></span> Syncing activity...
+              </div>
             </div>
           </div>
         </div>
@@ -626,6 +697,9 @@ function renderResultPage() {
   `;
 }
 
+window.showPage = showPage;
+window.fetchAndRenderSavedQuestions = fetchAndRenderSavedQuestions;
+
 // =============================================
 // NAVIGATION
 // =============================================
@@ -726,6 +800,15 @@ function attachAdminListeners() {
   if (backBtn) {
     backBtn.addEventListener('click', () => {
       showPage('home-page');
+    });
+  }
+
+  // Dashboard View All link
+  const viewAllBtn = document.getElementById('dashboard-view-all-btn');
+  if (viewAllBtn) {
+    viewAllBtn.addEventListener('click', () => {
+      const qTab = document.querySelector('.nav-item[data-tab="questions"]');
+      if (qTab) qTab.click();
     });
   }
 
@@ -1937,7 +2020,17 @@ function showToast(type, message) {
 async function updateDashboardStats() {
   const mcqEl = document.getElementById('stat-mcq-count');
   const codingEl = document.getElementById('stat-coding-count');
-  const userEl = document.getElementById('stat-total-users');
+  const smeCountEl = document.getElementById('stat-sme-count');
+  const totalEl = document.getElementById('stat-total-questions');
+  const smeContainer = document.getElementById('dashboard-sme-stats');
+  const activityContainer = document.getElementById('dashboard-recent-activity');
+  const smeSearch = document.getElementById('sme-search');
+
+  // Content Mix elements
+  const mixMcqBar = document.getElementById('mix-mcq-bar');
+  const mixCodingBar = document.getElementById('mix-coding-bar');
+  const mixMcqLabel = document.getElementById('mix-mcq-label');
+  const mixCodingLabel = document.getElementById('mix-coding-label');
 
   if (!mcqEl) return;
 
@@ -1946,11 +2039,84 @@ async function updateDashboardStats() {
     if (!response.ok) throw new Error();
     const data = await response.json();
 
-    mcqEl.textContent = data.mcqCount.toLocaleString();
-    codingEl.textContent = data.codingCount.toLocaleString();
-    userEl.textContent = data.totalUsers.toLocaleString();
+    // Update timestamp
+    const timeEl = document.getElementById('dashboard-last-updated');
+    if (timeEl) timeEl.textContent = `Last synced: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    const total = (data.mcqCount || 0) + (data.codingCount || 0);
+
+    // Update main counters
+    mcqEl.textContent = (data.mcqCount || 0).toLocaleString();
+    codingEl.textContent = (data.codingCount || 0).toLocaleString();
+    if (smeCountEl) smeCountEl.textContent = data.smeStats ? data.smeStats.length : 0;
+    if (totalEl) totalEl.textContent = total.toLocaleString();
+
+    // Update Content Mix
+    if (mixMcqBar && mixCodingBar) {
+      const mcqPercent = total > 0 ? (data.mcqCount / total) * 100 : 50;
+      const codingPercent = total > 0 ? (data.codingCount / total) * 100 : 50;
+
+      mixMcqBar.style.width = `${mcqPercent}%`;
+      mixCodingBar.style.width = `${codingPercent}%`;
+
+      if (mixMcqLabel) mixMcqLabel.textContent = `MCQs: ${Math.round(mcqPercent)}%`;
+      if (mixCodingLabel) mixCodingLabel.textContent = `Coding: ${Math.round(codingPercent)}%`;
+    }
+
+    // Update SME Leaderboard (New v2)
+    if (smeContainer && data.smeStats) {
+      const renderSMEs = (filter = '') => {
+        const filtered = data.smeStats.filter(s => (s._id || 'System Default').toLowerCase().includes(filter.toLowerCase()));
+        if (filtered.length === 0) {
+          smeContainer.innerHTML = `<div class="empty-state-v2">No experts found matching "${filter}"</div>`;
+        } else {
+          smeContainer.innerHTML = filtered.map((sme, idx) => `
+            <div class="sme-item-v2" style="animation-delay: ${idx * 0.05}s">
+              <div class="sme-info-v2">
+                <div class="sme-avatar-v2">${(sme._id || 'S')[0].toUpperCase()}</div>
+                <div>
+                  <div class="sme-name-v2">${sme._id || 'System Default'}</div>
+                  <div class="sme-rank-v2">Level ${Math.floor(sme.count / 5) + 1} Contributor</div>
+                </div>
+              </div>
+              <div class="sme-badge-v2">
+                <span class="count-v2">${sme.count}</span>
+                <span class="label-v2">Questions</span>
+              </div>
+            </div>
+          `).join('');
+        }
+      };
+
+      renderSMEs();
+
+      if (smeSearch) {
+        smeSearch.oninput = (e) => renderSMEs(e.target.value);
+      }
+    }
+
+    // Update Recent Activity
+    if (activityContainer && data.recentActivity) {
+      if (data.recentActivity.length === 0) {
+        activityContainer.innerHTML = `<div class="empty-state-v2">No recent generation activity found</div>`;
+      } else {
+        activityContainer.innerHTML = data.recentActivity.map((act, idx) => `
+          <div class="activity-item-v2" style="animation-delay: ${idx * 0.1}s">
+            <div class="activity-icon-v2 ${act.type}">${act.type === 'mcq' ? '📝' : '💻'}</div>
+            <div class="activity-details-v2">
+              <div class="activity-text-v2"><strong>${act.type.toUpperCase()}</strong> added to <span class="topic-tag-v2">${act.subtopic}</span></div>
+              <div class="activity-meta-v2">
+                <span class="meta-tag-v2 ${act.difficulty}">${act.difficulty.toUpperCase()}</span>
+                <span class="meta-time-v2">• Created ${new Date(act.createdAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
   } catch (err) {
-    console.warn('Failed to fetch stats', err);
+    console.warn('Dashboard sync failed:', err);
   }
 }
 
@@ -1961,7 +2127,7 @@ async function fetchAndRenderSavedQuestions() {
   container.innerHTML = `
     <div style="padding: 40px; text-align: center;">
         <span class="spinner"></span>
-        <p style="margin-top: 15px; opacity: 0.7;">Syncing with MongoDB Compass...</p>
+        <p style="margin-top: 15px; opacity: 0.7; font-weight: 500;">Fetching expert-curated questions...</p>
     </div>
   `;
 
