@@ -8,6 +8,8 @@ const QuestionSchema = new mongoose.Schema({
     type: { type: String, enum: ['mcq', 'coding'], required: true },
     smeName: { type: String },
     watermark: { type: String },
+    sessionId: { type: String },
+    sessionName: { type: String },
 
     // MCQ specific fields
     question: { type: String },

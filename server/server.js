@@ -18,7 +18,10 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connection.on('error', err => console.error('❌ Mongoose Connection Error Event:', err));
+mongoose.connection.on('disconnected', () => console.log('⚠️ Mongoose disconnected!'));
+
+mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
     .then(() => console.log('✅ Connected to MongoDB (Compass)'))
     .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
@@ -132,7 +135,149 @@ app.delete('/api/questions/clear', async (req, res) => {
     }
 });
 
-// Settings - Save API Key to Server .env
+// Rename a Session
+app.put('/api/questions/session/:sessionId', async (req, res) => {
+    try {
+        const { sessionName } = req.body;
+        if (!sessionName) {
+            return res.status(400).json({ error: 'Session Name is required' });
+        }
+        const result = await Question.updateMany(
+            { sessionId: req.params.sessionId },
+            { $set: { sessionName } }
+        );
+        res.json({ message: `Session renamed`, modifiedCount: result.modifiedCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete a Session
+app.delete('/api/questions/session/:sessionId', async (req, res) => {
+    try {
+        const result = await Question.deleteMany({ sessionId: req.params.sessionId });
+        res.json({ message: `Session deleted`, deletedCount: result.deletedCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Settings - Save API Key to Server .env (Legacy - keeping for fallback)
+app.post('/api/settings/save-key', async (req, res) => {
+    try {
+        const { apiKey, model } = req.body;
+        if (!apiKey) return res.status(400).json({ error: 'API Key is required' });
+
+        const fs = require('fs');
+        // TARGET THE CLIENT FOLDER, NOT SERVER FOLDER
+        const clientEnvPath = path.join(__dirname, '../client/.env');
+
+        // Read existing file or create empty
+        let envContent = '';
+        if (fs.existsSync(clientEnvPath)) {
+            envContent = fs.readFileSync(clientEnvPath, 'utf8');
+        }
+
+        // Helper to update specific key
+        const updateEnv = (content, key, val) => {
+            const regex = new RegExp(`^${key}=.*`, 'm');
+            if (regex.test(content)) {
+                return content.replace(regex, `${key}=${val}`);
+            } else {
+                return content + `\n${key}=${val}`;
+            }
+        };
+
+        // Update environment variables
+        envContent = updateEnv(envContent, 'VITE_GROQ_API_KEY', apiKey); // Use VITE_ prefix for frontend
+        envContent = updateEnv(envContent, 'VITE_GROQ_MODEL', model || 'llama-3.3-70b-versatile');
+
+        fs.writeFileSync(clientEnvPath, envContent);
+
+        res.json({ message: 'Settings saved to server successfully', model });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// SME PROFILE ROUTES
+// =============================================
+
+// Get all SMEs
+app.get('/api/smes', async (req, res) => {
+    try {
+        // Exclude the raw apiKey from the GET response generally,
+        // but since this is an admin tool we might need it for generation 
+        // if requested directly. However, for security, the frontend should just 
+        // reference the SME ID and send the ID to the backend for generation.
+        // Wait, the current architecture does generation from the FRONTEND.
+        // So the frontend NEEDS the api keys.
+        const smes = await SME.find().sort({ createdAt: -1 });
+        res.json(smes);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Add a new SME
+app.post('/api/smes', async (req, res) => {
+    try {
+        const { name, apiKey, model } = req.body;
+
+        if (!name || !apiKey) {
+            return res.status(400).json({ error: 'Name and API Key are required' });
+        }
+
+        const newSme = new SME({
+            name,
+            apiKey,
+            model: model || 'llama-3.3-70b-versatile'
+        });
+
+        await newSme.save();
+        res.status(201).json({ message: 'SME Profile added successfully', sme: newSme });
+    } catch (err) {
+        console.error('❌ Error adding SME:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete an SME
+app.delete('/api/smes/:id', async (req, res) => {
+    try {
+        const deleted = await SME.findByIdAndDelete(req.params.id);
+        if (!deleted) {
+            return res.status(404).json({ error: 'SME not found' });
+        }
+        res.json({ message: 'SME Profile deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update an SME (specifically for Model, but allows other fields)
+app.put('/api/smes/:id', async (req, res) => {
+    try {
+        const updates = {};
+        if (req.body.model) updates.model = req.body.model;
+        if (req.body.apiKey) updates.apiKey = req.body.apiKey;
+        if (req.body.name) updates.name = req.body.name;
+
+        const updatedSme = await SME.findByIdAndUpdate(
+            req.params.id,
+            { $set: updates },
+            { new: true }
+        );
+        if (!updatedSme) {
+            return res.status(404).json({ error: 'SME not found' });
+        }
+        res.json({ message: 'SME Profile updated successfully', sme: updatedSme });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/settings/save-key', async (req, res) => {
     try {
         const { apiKey, model } = req.body;
