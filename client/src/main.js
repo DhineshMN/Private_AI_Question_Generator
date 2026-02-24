@@ -857,7 +857,7 @@ function attachAdminListeners() {
         saveBtn.innerHTML = `<span class="spinner-sm"></span> Saving...`;
 
         try {
-          const response = await fetch('http://localhost:5000/api/questions/bulk', {
+          const response = await fetch('/api/questions/bulk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -936,7 +936,7 @@ function attachAdminListeners() {
 
       try {
         // Also save to server for permanent persistence
-        const response = await fetch('http://localhost:5000/api/settings/save-key', {
+        const response = await fetch('/api/settings/save-key', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ apiKey: key, model: model })
@@ -1039,16 +1039,32 @@ async function generateAIQuestions(topic, type, difficulty, count, category, sub
     return '// Starter code template\nfunction solution(input) {\n}';
   };
 
-  const industries = ['FinTech', 'HealthTech', 'E-commerce', 'Cybersecurity', 'GameDev', 'SaaS', 'EdTech', 'Logistics', 'Robotics', 'Web3', 'AI/ML', 'GreenTech'];
-  const perspectives = ['Performance-obsessed Tech Lead', 'Security-first Architect', 'Developer Experience (DX) Advocate', 'Scalability Engineer', 'Budget-conscious Startup CTO', 'Legacy System Modernization Specialist'];
-  const focuses = ['Edge Cases & Error Handling', 'Memory Efficiency', 'Maintainability & Readability', 'Security & Input Sanitization', 'High-throughput Scalability', 'Advanced Design Patterns'];
+  const industries = ['FinTech', 'HealthTech', 'E-commerce', 'Cybersecurity', 'GameDev', 'SaaS', 'EdTech', 'Logistics', 'Robotics', 'Web3', 'AI/ML', 'GreenTech', 'SpaceTech', 'AgriTech'];
+  const perspectives = ['Performance-obsessed Tech Lead', 'Security-first Architect', 'Developer Experience (DX) Advocate', 'Scalability Engineer', 'Budget-conscious Startup CTO', 'Legacy System Modernization Specialist', 'Accessibility Expert', 'Machine Learning Engineer'];
+  const focuses = ['Edge Cases & Error Handling', 'Memory Efficiency', 'Maintainability & Readability', 'Security & Input Sanitization', 'High-throughput Scalability', 'Advanced Design Patterns', 'Unit Testing Coverage', 'Cross-browser Compatibility'];
+  const taskTypes = ['Bug Fix / Debugging', 'Feature Implementation From Scratch', 'Performance Optimization / Refactoring', 'Data Processing / Transformation', 'Security Hardening', 'Architecture Setup', 'API Integration', 'UI/UX Polish'];
 
-  const taskTypes = ['Bug Fix / Debugging', 'Feature Implementation From Scratch', 'Performance Optimization / Refactoring', 'Data Processing / Transformation', 'Security Hardening', 'Architecture Setup'];
+  // Difficulty-specific constraints
+  const difficultyRules = {
+    easy: "Focus on fundamental concepts, clear terminology, and single-step logic. Questions should be direct.",
+    medium: "Introduce multi-step thinking, common pitfalls, and architectural tradeoffs. Mix definitions with application.",
+    hard: "Deep-dive into internals, edge cases, distributed system bottlenecks, and advanced optimizations. Require synthesizing multiple concepts."
+  };
+
+  const complexityModifiers = [
+    "Include an additional constraint regarding time complexity.",
+    "Add a requirement for a specific design pattern to be mentioned in the strategy.",
+    "Describe a specific error scenario that must be handled.",
+    "Frame the input as a stream of data rather than a static list.",
+    "Assume the environment has strictly limited memory (e.g., 64MB)."
+  ];
 
   const flavor = industries[Math.floor(Math.random() * industries.length)];
   const persona = perspectives[Math.floor(Math.random() * perspectives.length)];
   const techFocus = focuses[Math.floor(Math.random() * focuses.length)];
   const challengeType = taskTypes[Math.floor(Math.random() * taskTypes.length)];
+  const diffRule = difficultyRules[difficulty] || "";
+  const modifier = complexityModifiers[Math.floor(Math.random() * complexityModifiers.length)];
   const variationId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
   const prompt = isMcq ?
@@ -1059,13 +1075,14 @@ Technical Emphasis: ${techFocus}.
 VARIATION ID: ${variationId}.
 
 Generate ${count} MCQ questions. REQUIREMENTS:
+- DIFFICULTY CALIBRATION: ${diffRule}
 - Use your Persona to influence the wording and scenario.
 - Focus on the Technical Emphasis where relevant.
 - Technically perfect, zero ambiguity
 - Detailed "Smart Explanations" that explain "Why A is right" AND "Why others are wrong"
 - Professional tone, similar to AWS/GCP certification exams
 - NOVELTY: Avoid common/cliché questions. Create unique scenarios.
-- VARIATION SEED: ${Date.now()}
+- VARIATION SEED: ${Date.now()}-${Math.random()}
 
 Return ONLY a JSON object:
   {
@@ -1108,9 +1125,11 @@ Generate ${count} challenge(s). QUALITY STANDARDS:
    - ** LOGIC STRIPPING **: Provide ONLY the component signature and total empty stubs.
    - ** FORBIDDEN **: Do NOT provide UI layout, JSX loops, state management, or business logic.
    - Leave clear "// TODO" sections for the student.
-4. NOVELTY & VARIETY(CRITICAL):
-  - Use a unique real - world scenario every time.
-   - VARIATION SEED: ${Date.now()} -${Math.random()}
+4. NOVELTY & VARIETY (CRITICAL):
+   - DIFFICULTY CALIBRATION: ${diffRule}
+   - COMPLEXITY MODIFIER: ${modifier}
+   - Use a unique real-world scenario every time.
+   - VARIATION SEED: ${Date.now()}-${Math.random()}
   - Avoid generic "Todo List" or "Counter" apps unless explicitly requested.
 
 Return ONLY a JSON object:
@@ -1161,9 +1180,11 @@ Generate ${count} challenge(s). CRYSTAL CLEAR QUALITY STANDARDS:
    - ** FORBIDDEN **: No initialization of variables, no loops, no if-statements, no helper logic.
    - ONLY provide the 'def', 'class', or 'interface' declaration and a single TODO comment.
    - Use 'pass'(Python), 'null'(Java / JS), or 'return 0/[]' as absolute bare minimums.
-5. NOVELTY & RANDOMIZATION(CRITICAL):
-  - Create UNIQUE scenarios.Avoid overused clones.
-   - VARIATION SEED: ${Date.now()} -${Math.random()}
+5. NOVELTY & RANDOMIZATION (CRITICAL):
+   - DIFFICULTY CALIBRATION: ${diffRule}
+   - COMPLEXITY MODIFIER: ${modifier}
+   - Create UNIQUE scenarios. Avoid overused clones.
+   - VARIATION SEED: ${Date.now()}-${Math.random()}
   - Introduce unexpected constraints or data formats to force creative logic.
 
 Return ONLY a JSON object:
@@ -1996,7 +2017,7 @@ async function startTest() {
     }
   } catch (error) {
     console.error(error);
-    showToast('error', 'Failled to generate test: ' + error.message);
+    showToast('error', 'Failed to generate test: ' + error.message);
   } finally {
     showLoading(false);
     if (loadingText) loadingText.textContent = 'Generating your test...'; // Reset
@@ -2699,7 +2720,7 @@ async function updateDashboardStats() {
   if (!isStale && !force) return;
 
   try {
-    const response = await fetch('http://localhost:5000/api/stats');
+    const response = await fetch('/api/stats');
     if (!response.ok) throw new Error();
     const data = await response.json();
     state.lastStatsFetch = now;
@@ -2811,7 +2832,7 @@ async function fetchAndRenderSavedQuestions(force = false) {
   `;
 
   try {
-    const response = await fetch('http://localhost:5000/api/questions');
+    const response = await fetch('/api/questions');
     if (!response.ok) throw new Error();
 
     const questions = await response.json();
@@ -2866,7 +2887,7 @@ function renderQuestionsTable(questions) {
 
 window.deleteSavedQuestion = async (mongoId) => {
   try {
-    const response = await fetch(`http://localhost:5000/api/questions/${mongoId}`, {
+    const response = await fetch(`/api/questions/${mongoId}`, {
       method: 'DELETE'
     });
 
