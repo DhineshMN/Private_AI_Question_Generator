@@ -105,24 +105,24 @@ A state-of-the-art, AI-powered platform for generating and taking technical asse
 ## 📂 Project Structure
 
 ```text
-mcq-1/
+Question-genetaror/
 ├── client/
-│   ├── .env              # Local API Key Storage (Not committed)
-│   ├── .env.example      # Template for API Key config
+│   ├── .env.example      # Template for Groq API Key config
 │   ├── index.html        # Main Entry Point
 │   ├── package.json      # Frontend Dependencies
 │   └── src/
 │       ├── main.js       # Core Application Logic
+│       ├── api.js        # API Helper Functions
 │       ├── style.css     # Design System
-│       └── data.js       # Mock Data
+│       └── data.js       # Mock/Fallback Data
 ├── server/
-│   ├── server.js         # API Server
+│   ├── server.js         # Express API Server
+│   ├── .env.example      # Template for DB config
 │   ├── package.json      # Backend Dependencies
-│   ├── .env              # Backend Environment
 │   └── database/
 │       └── models/
-│           └── Question.js
-├── TECHNICAL_HANDOVER.md
+│           ├── Question.js  # Question Schema (with session support)
+│           └── SME.js       # SME Profile Schema
 └── README.md
 ```
 
