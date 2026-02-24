@@ -1039,20 +1039,32 @@ async function generateAIQuestions(topic, type, difficulty, count, category, sub
     return '// Starter code template\nfunction solution(input) {\n}';
   };
 
-  const industries = ['FinTech', 'HealthTech', 'E-commerce', 'Cybersecurity', 'GameDev', 'SaaS', 'EdTech', 'Logistics', 'Robotics', 'Web3'];
+  const industries = ['FinTech', 'HealthTech', 'E-commerce', 'Cybersecurity', 'GameDev', 'SaaS', 'EdTech', 'Logistics', 'Robotics', 'Web3', 'AI/ML', 'GreenTech'];
+  const perspectives = ['Performance-obsessed Tech Lead', 'Security-first Architect', 'Developer Experience (DX) Advocate', 'Scalability Engineer', 'Budget-conscious Startup CTO', 'Legacy System Modernization Specialist'];
+  const focuses = ['Edge Cases & Error Handling', 'Memory Efficiency', 'Maintainability & Readability', 'Security & Input Sanitization', 'High-throughput Scalability', 'Advanced Design Patterns'];
+
+  const taskTypes = ['Bug Fix / Debugging', 'Feature Implementation From Scratch', 'Performance Optimization / Refactoring', 'Data Processing / Transformation', 'Security Hardening', 'Architecture Setup'];
+
   const flavor = industries[Math.floor(Math.random() * industries.length)];
+  const persona = perspectives[Math.floor(Math.random() * perspectives.length)];
+  const techFocus = focuses[Math.floor(Math.random() * focuses.length)];
+  const challengeType = taskTypes[Math.floor(Math.random() * taskTypes.length)];
   const variationId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
   const prompt = isMcq ?
-    `You are a senior technical SME. Topic: "${topic}". Industry Focus: ${flavor}. VARIATION ID: ${variationId}.
+    `Your Persona: ${persona}. 
+Topic: "${topic}". 
+Industry Focus: ${flavor}. 
+Technical Emphasis: ${techFocus}.
+VARIATION ID: ${variationId}.
+
 Generate ${count} MCQ questions. REQUIREMENTS:
+- Use your Persona to influence the wording and scenario.
+- Focus on the Technical Emphasis where relevant.
 - Technically perfect, zero ambiguity
 - Detailed "Smart Explanations" that explain "Why A is right" AND "Why others are wrong"
 - Professional tone, similar to AWS/GCP certification exams
 - NOVELTY: Avoid common/cliché questions. Create unique scenarios.
-    - Detailed "Smart Explanations" that explain "Why A is right" AND "Why others are wrong"
-      - Professional tone, similar to AWS / GCP certification exams
-        - NOVELTY: Avoid common / cliché questions.Create unique scenarios.
 - VARIATION SEED: ${Date.now()}
 
 Return ONLY a JSON object:
@@ -1068,7 +1080,11 @@ Return ONLY a JSON object:
   } ` :
 
     isFramework ?
-      `You are a senior software architect and tech lead. Topic: "${topic}". Industry Context: ${flavor}.
+      `Your Persona: ${persona}.
+Topic: "${topic}". 
+Industry Context: ${flavor}.
+Technical Emphasis: ${techFocus}.
+Challenge Type: ${challengeType}.
 Difficulty: ${difficulty.toUpperCase()}. VARIATION ID: ${variationId}.
 
 Generate ${count} challenge(s). QUALITY STANDARDS:
@@ -1122,7 +1138,11 @@ Return ONLY a JSON object:
     ]
   } ` :
 
-      `You are a competitive programming expert. Context: ${topic}. Scenario Context: ${flavor}.
+      `Your Persona: ${persona}.
+Context: ${topic}. 
+Scenario Context: ${flavor}.
+Technical Emphasis: ${techFocus}.
+Challenge Type: ${challengeType}.
 Complexity: ${difficulty.toUpperCase()} (${difficultyContext}). VARIATION ID: ${variationId}.
 
 Generate ${count} challenge(s). CRYSTAL CLEAR QUALITY STANDARDS:
@@ -1182,7 +1202,7 @@ Return ONLY a JSON object:
         { role: 'system', content: 'You are an expert technical SME and software architect. You output ONLY valid JSON with no markdown formatting.' },
         { role: 'user', content: prompt }
       ],
-      temperature: 0.7, // Increased for variety and creativity
+      temperature: 0.8 + (Math.random() * 0.1), // Dynamic temperature for high variety
       max_tokens: 4096,
       response_format: { type: 'json_object' }
     })
