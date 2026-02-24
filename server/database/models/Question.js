@@ -23,6 +23,17 @@ const QuestionSchema = new mongoose.Schema({
     output: { type: String },
     timeLimit: { type: String },
     constraints: [{ type: String }],
+    hints: [{ type: String }],
+    examples: [{
+        input: String,
+        output: String,
+        explanation: String
+    }],
+    testCases: [{
+        input: String,
+        output: String,
+        hidden: { type: Boolean, default: false }
+    }],
 
     createdAt: { type: Date, default: Date.now }
 });

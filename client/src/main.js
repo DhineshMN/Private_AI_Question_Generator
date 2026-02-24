@@ -26,9 +26,12 @@ const state = {
   groqModel: localStorage.getItem('groq_model') || import.meta.env.VITE_GROQ_MODEL || 'llama-3.3-70b-versatile',
   codingResults: [], // Track pass/fail for each problem
   codingHints: [], // Store AI hints
+  selectedTestCaseIndex: 0,
+  activeFile: null,
+  workingCode: {}, // Store user edits per file
   savedQuestions: [], // Cache for admin view
-  smes: [], // SME Profiles from MongoDB
-  activeSmeId: localStorage.getItem('active_sme_id') || null,
+  lastStatsFetch: 0, // Performance: Cache stats
+  lastQuestionsFetch: 0, // Performance: Cache question table
 };
 
 // =============================================
@@ -330,7 +333,7 @@ function renderAdminPage() {
           <div class="card card-glass" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
               <p class="card-title" style="margin-bottom: 0;">⚡ Recent Activity</p>
-              <button class="btn btn-secondary btn-sm" id="dashboard-view-all-btn">View All</button>
+              <button class="btn btn-secondary btn-sm" id="view-all-questions-btn">View All</button>
             </div>
             <div id="dashboard-recent-activity">
               <div style="opacity: 0.7; padding: 40px; text-align: center;">
@@ -395,12 +398,9 @@ function renderAdminPage() {
                 </div>
               </div>
 
-              <div class="form-group" style="padding: 12px; background: rgba(99, 102, 241, 0.05); border: 1px dashed var(--primary); border-radius: var(--radius-md); text-align: center;">
-                <label class="form-label" style="margin-bottom: 5px;">Active SME Watermark</label>
-                <div id="active-sme-name-display" style="font-weight: 700; color: var(--primary-light);">
-                  ${state.activeSmeId ? (state.smes.find(s => s._id === state.activeSmeId)?.name || 'Loading SME...') : '❌ No SME Selected'}
-                </div>
-                <p style="font-size: 0.7rem; margin-top: 5px; opacity: 0.6;">Select SME in Settings to apply watermark</p>
+              <div class="form-group">
+                <label class="form-label">Authorized SME Name</label>
+                <input type="text" class="form-input" id="gen-sme" placeholder="Enter your name (e.g. Dr. Smith)...">
               </div>
 
               <button class="btn btn-primary btn-lg w-full" id="generate-questions-btn" style="margin-top: 8px;">
@@ -411,8 +411,10 @@ function renderAdminPage() {
             <div class="generator-preview">
               <div class="card card-glass preview-card">
                 <div class="preview-header">
-                  <span class="preview-title">Preview</span>
-                  <button class="btn btn-secondary btn-sm" id="save-generated-btn" disabled>Save to Database</button>
+                  <span class="preview-title">✨ Preview</span>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm" id="save-generated-btn" disabled>💾 Save to Database</button>
+                  </div>
                 </div>
                 <div class="preview-content" id="gen-preview-content">
                   <div class="empty-preview">
@@ -446,57 +448,32 @@ function renderAdminPage() {
         <!-- Settings Tab -->
         <div id="tab-settings" class="admin-tab">
            <header class="admin-header">
-            <h2 class="admin-title">SME & API Configurations</h2>
-            <p class="admin-subtitle">Manage multiple SME profiles and their associated API keys</p>
+            <h2 class="admin-title">Admin Settings</h2>
           </header>
-
-          <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 30px; align-items: start;">
-            <!-- Register New SME -->
-            <div class="card card-glass">
-              <h3 style="margin-bottom: 20px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
-                <span>📝</span> Register SME Profile
-              </h3>
-              <div class="form-group">
-                <label class="form-label">SME Full Name</label>
-                <input type="text" class="form-input" id="sme-reg-name" placeholder="e.g. Likhitha ...">
+          <div class="card card-glass" style="max-width: 600px;">
+            <div class="form-group">
+              <label class="form-label">Groq API Key</label>
+              <div style="display: flex; gap: 10px;">
+                <input type="password" class="form-input" id="groq-api-key" placeholder="gsk_..." value="${state.groqKey}" style="flex: 1;">
+                <button class="btn btn-primary btn-sm" id="save-settings-btn">Save</button>
               </div>
-              <div class="form-group" style="margin-top: 15px;">
-                <label class="form-label">Groq API Key</label>
-                <input type="password" class="form-input" id="sme-reg-key" placeholder="gsk_...">
-              </div>
-              <div class="form-group" style="margin-top: 15px;">
-                <label class="form-label">Preferred AI Model</label>
-                <select class="form-select" id="sme-reg-model">
-                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile)</option>
-                  <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast)</option>
-                  <option value="mixtral-8x7b-32768">Mixtral 8x7B (Deep)</option>
-                </select>
-              </div>
-              <button class="btn btn-primary w-full" id="sme-reg-btn" style="margin-top: 25px;">
-                ✨ Add SME Profile
-              </button>
+              <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px;">
+                Get your free API key at <a href="https://console.groq.com/keys" target="_blank" style="color: var(--primary-light); text-decoration: underline;">Groq Console</a>.
+              </p>
             </div>
-
-            <!-- SME Profiles List -->
-            <div class="card card-glass">
-              <h3 style="margin-bottom: 20px; font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
-                <span>👥</span> Managed SME Profiles
-              </h3>
-              <div id="sme-list-container" style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- SME profiles rendered here -->
-                <div style="text-align: center; padding: 40px; opacity: 0.5;">
-                  <span class="spinner"></span>
-                  <p>Loading profiles...</p>
-                </div>
-              </div>
+            <div class="form-group" style="margin-top: 24px;">
+              <label class="form-label">AI Model</label>
+              <select class="form-select" id="groq-model-select" style="width: 100%;">
+                <option value="llama-3.3-70b-versatile" ${state.groqModel === 'llama-3.3-70b-versatile' ? 'selected' : ''}>Llama 3.3 70B (SOTA / Versatile)</option>
+                <option value="llama-3.1-8b-instant" ${state.groqModel === 'llama-3.1-8b-instant' ? 'selected' : ''}>Llama 3.1 8B (Fast / Lightweight)</option>
+                <option value="mixtral-8x7b-32768" ${state.groqModel === 'mixtral-8x7b-32768' ? 'selected' : ''}>Mixtral 8x7B (High Context)</option>
+              </select>
             </div>
-          </div>
-
-          <div style="margin-top: 30px; padding: 20px; background: rgba(99, 102, 241, 0.05); border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.2); display: flex; align-items: flex-start; gap: 15px;">
-             <span style="font-size: 1.5rem;">🔑</span>
-             <p style="font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary);">
-               <strong>Data Privacy & Security:</strong> All API keys are stored in your private MongoDB instance. When generating questions, the selected SME's key is used to authenticate requests. Each generated question is automatically <strong>watermarked</strong> with the SME's name and a <strong>timestamp</strong>.
-             </p>
+            <div style="margin-top: 30px; padding: 15px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; border-left: 4px solid var(--primary);">
+              <p style="font-size: 0.85rem; line-height: 1.5;">
+                <strong>💡 Note:</strong> Your API key is stored locally in your browser and is only used to make requests to Groq. 
+              </p>
+            </div>
           </div>
         </div>
       </main>
@@ -578,73 +555,68 @@ function renderMCQPage() {
 // =============================================
 function renderCodingPage() {
   return `
-    <div class="exam-header">
+    <div class="exam-header" style="height: 55px; border-bottom: 1px solid var(--border); padding: 0 20px;">
       <div class="exam-header-left">
-        <div class="exam-logo-sm">💻</div>
-        <div>
-          <div class="exam-title-sm">Coding Test</div>
-          <div class="exam-subtitle-sm" id="coding-difficulty-label">Medium · Problem 1</div>
-        </div>
       </div>
       <div class="exam-header-right" style="display: flex; align-items: center; gap: 15px;">
-        <div class="timer-display" id="coding-timer">
-          <span class="timer-icon">⏱️</span>
-          <span id="coding-timer-text">45:00</span>
+        <div class="timer-display" id="coding-timer" style="background: transparent; border: none; padding: 0;">
+          <span id="coding-timer-text" style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.9rem;">45:00</span>
         </div>
-        <button class="btn btn-secondary btn-sm" id="coding-exit-btn" style="border-color: rgba(239, 68, 68, 0.3); color: var(--danger-light); background: rgba(239, 68, 68, 0.05);">
-          Exit Test
-        </button>
+        <button class="btn btn-secondary btn-sm" id="coding-exit-btn" style="padding: 4px 12px; font-size: 0.75rem;">Exit</button>
       </div>
     </div>
 
     <div class="coding-body">
       <!-- Problem Panel -->
-      <div class="problem-panel" id="problem-panel">
-        <div>
-          <h2 class="problem-title" id="problem-title">Loading Problem...</h2>
-          <div class="problem-meta" id="problem-meta">
-            <span class="badge badge-warning">Medium</span>
-          </div>
-        </div>
-
-        <div>
-          <p class="problem-section-title">📋 Description</p>
-          <p class="problem-description" id="problem-description">Loading...</p>
+      <div class="problem-panel" id="problem-panel" style="padding: 32px; background: transparent; border-right: 1px solid var(--border);">
+        <h2 class="problem-title" id="problem-title" style="font-size: 1.8rem; font-weight: 700; color: #fff; margin-bottom: 12px;">Loading...</h2>
+        <div id="problem-meta" style="margin-bottom: 24px;"></div>
+        
+        <div class="problem-description" id="problem-description" style="margin-bottom: 30px; line-height: 1.7;">
+          Loading...
         </div>
 
         <div id="problem-examples">
           <!-- Examples rendered dynamically -->
         </div>
 
-        <div>
-          <p class="problem-section-title">⚠️ Constraints</p>
-          <ul class="constraints-list" id="problem-constraints">
-            <!-- Constraints rendered dynamically -->
-          </ul>
+        <div id="problem-constraints" style="margin-top: 40px;">
+          <!-- Constraints rendered dynamically -->
+        </div>
+
+        <!-- Extra features hidden for absolute clarity unless needed -->
+        <div id="extra-panels" style="display: none;">
+          <div id="project-structure-panel"></div>
+          <div id="coding-hints-container"></div>
+          <div id="visible-test-grid"></div>
         </div>
       </div>
 
       <!-- Editor Panel -->
-      <div class="editor-panel">
-        <div class="editor-toolbar">
-          <div class="editor-toolbar-left">
-            <span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">Language:</span>
-            <select class="lang-select" id="lang-select">
-              <option value="python">🐍 Python</option>
-              <option value="java">☕ Java</option>
-              <option value="cpp">⚡ C++</option>
-              <option value="sql">🗄️ SQL</option>
-              <option value="c">🔧 C</option>
+      <div class="editor-panel" style="background: #0f172a; border-left: 1px solid var(--border);">
+        <div class="editor-toolbar" style="background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border); padding: 8px 16px; height: 45px;">
+          <div class="editor-toolbar-left" style="gap: 5px;">
+            <select class="lang-select" id="lang-select" style="background: transparent; border: none; font-size: 0.8rem; padding-right: 20px;">
+              <option value="python">Python3</option>
+              <option value="java">Java</option>
+              <option value="cpp">C++</option>
+              <option value="sql">SQL</option>
+              <option value="c">C</option>
             </select>
+            <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 10px;">• Auto</span>
           </div>
-          <div class="editor-toolbar-right">
-            <button class="btn btn-secondary btn-sm" id="run-code-btn">
-              ▶ Run Code
+          <div class="editor-toolbar-right" style="gap: 12px;">
+            <button class="btn btn-secondary btn-sm" id="run-code-btn" style="background: transparent; border: none; color: var(--success-light); font-weight: 600; font-size: 0.8rem;">
+              Run
             </button>
-            <button class="btn btn-success btn-sm" id="submit-code-btn">
-              ✓ Submit
+            <button class="btn btn-success btn-sm" id="submit-code-btn" style="padding: 4px 16px; font-size: 0.8rem; border-radius: 6px;">
+              Submit
             </button>
           </div>
+        </div>
+
+        <div id="file-tabs-container" style="display: none; background: rgba(0,0,0,0.1); border-bottom: 1px solid var(--border); overflow-x: auto; white-space: nowrap; height: 35px;">
+          <!-- Tabs rendered dynamically -->
         </div>
 
         <div class="editor-wrapper">
@@ -726,9 +698,6 @@ function renderResultPage() {
     </div>
   `;
 }
-
-window.showPage = showPage;
-window.fetchAndRenderSavedQuestions = fetchAndRenderSavedQuestions;
 
 // =============================================
 // NAVIGATION
@@ -833,15 +802,6 @@ function attachAdminListeners() {
     });
   }
 
-  // Dashboard View All link
-  const viewAllBtn = document.getElementById('dashboard-view-all-btn');
-  if (viewAllBtn) {
-    viewAllBtn.addEventListener('click', () => {
-      const qTab = document.querySelector('.nav-item[data-tab="questions"]');
-      if (qTab) qTab.click();
-    });
-  }
-
   // Tab switching
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
@@ -860,8 +820,6 @@ function attachAdminListeners() {
           fetchAndRenderSavedQuestions();
         } else if (tabId === 'dashboard') {
           updateDashboardStats();
-        } else if (tabId === 'settings') {
-          fetchAndRenderSMEs();
         }
       }
     });
@@ -870,41 +828,12 @@ function attachAdminListeners() {
   // Initial stats load
   updateDashboardStats();
 
-  // SME Registration
-  const smeRegBtn = document.getElementById('sme-reg-btn');
-  if (smeRegBtn) {
-    smeRegBtn.addEventListener('click', async () => {
-      const name = document.getElementById('sme-reg-name').value.trim();
-      const apiKey = document.getElementById('sme-reg-key').value.trim();
-      const model = document.getElementById('sme-reg-model').value;
-
-      if (!name || !apiKey) {
-        showToast('error', 'Name and API Key are required');
-        return;
-      }
-
-      smeRegBtn.disabled = true;
-      smeRegBtn.textContent = 'Registering...';
-
-      try {
-        const response = await fetch('http://localhost:5000/api/smes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, apiKey, model })
-        });
-
-        if (!response.ok) throw new Error('Failed to register SME');
-
-        showToast('success', 'SME Profile Registered!');
-        document.getElementById('sme-reg-name').value = '';
-        document.getElementById('sme-reg-key').value = '';
-        fetchAndRenderSMEs();
-      } catch (error) {
-        showToast('error', error.message);
-      } finally {
-        smeRegBtn.disabled = false;
-        smeRegBtn.textContent = '✨ Add SME Profile';
-      }
+  // View All button → go to Manage Questions tab
+  const viewAllBtn = document.getElementById('view-all-questions-btn');
+  if (viewAllBtn) {
+    viewAllBtn.addEventListener('click', () => {
+      const questionsNavItem = document.querySelector('.nav-item[data-tab="questions"]');
+      if (questionsNavItem) questionsNavItem.click();
     });
   }
 
@@ -1046,13 +975,7 @@ async function handleGenerateClick() {
   const type = activeSegment ? activeSegment.dataset.value : 'mcq';
   const difficulty = document.getElementById('gen-difficulty').value;
   const count = parseInt(document.getElementById('gen-count').value);
-
-  const activeSme = state.smes.find(s => s._id === state.activeSmeId);
-  if (!activeSme) {
-    showToast('error', 'Please select an SME profile in Settings first!');
-    return;
-  }
-  const smeName = activeSme.name;
+  const smeName = document.getElementById('gen-sme').value || 'System Default';
 
   const finalTopic = specificTopic ? `${subtopic} (${specificTopic})` : subtopic;
 
@@ -1071,25 +994,11 @@ async function handleGenerateClick() {
 
   try {
     const generated = await generateAIQuestions(finalTopic, type, difficulty, count, category, subtopic, smeName);
-
-    // Apply Auto-Watermarking & Metadata
-    const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    generated.forEach(q => {
-      q.smeName = smeName;
-      q.createdAt = new Date().toISOString();
-      q.watermark = `Verified by SME: ${smeName} | ${timestamp}`;
-      q.id = Math.floor(Math.random() * 90000) + 10000;
-      q.category = category;
-      q.subtopic = subtopic;
-      q.difficulty = difficulty;
-      q.type = type;
-    });
-
     state.lastGenerated = generated;
     state.lastGeneratedType = type;
 
     renderGeneratedPreview(generated, type);
-    showToast('success', `AI generated ${count} questions with SME watermarks!`);
+    showToast('success', `AI generated ${count} questions successfully!`);
   } catch (error) {
     console.error(error);
     showToast('error', 'AI Generation Failed: ' + error.message);
@@ -1108,40 +1017,173 @@ async function handleGenerateClick() {
 
 async function generateAIQuestions(topic, type, difficulty, count, category, subtopic, smeName) {
   const isMcq = type === 'mcq';
+
+  // Advanced Difficulty Calibration (Perfect Fine-Tune)
+  const difficultyContext = {
+    easy: 'Objective: Foundational logic. Difficulty: Iterative (O(N) or O(1)). Scope: Basic syntax, loops, and conditional logic. Minimize recursion/complex structures.',
+    medium: 'Objective: Professional efficiency. Difficulty: O(N log N) or O(N). Scope: Advanced collections, trees, sorting, and multi-pointer logic. Must include edge calculations.',
+    hard: 'Objective: Competitive standard. Difficulty: O(log N) or O(N). Scope: DP (Dynamic Programming), Graph algorithms, complex data structures (Interval trees, Segment trees), and extreme performance constraints.'
+  }[difficulty] || 'General technical knowledge';
+
+  const isFramework = ['react', 'angular', 'vue', 'next', 'django', 'flask', 'spring', 'express', 'laravel', 'rails', 'stack', 'framework'].some(f => topic.toLowerCase().includes(f));
+
+  // Language Specific Boilerplate Provider
+  const getBoilerplate = (lang) => {
+    const l = lang.toLowerCase();
+    if (l.includes('python')) return 'def solution(input_data):\n    # Write your logic here\n    pass';
+    if (l.includes('java')) return 'public class Solution {\n    public static void main(String[] args) {\n        // Read from stdin and output result\n    }\n}';
+    if (l.includes('cpp') || l.includes('c++')) return '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Solution code\n    return 0;\n}';
+    if (l.includes('sql')) return '-- Write your SQL query here\nSELECT * FROM table;';
+    if (l.includes('javascript')) return 'function solution(input) {\n    // Implement logic\n    return null;\n}';
+    if (l.includes('php')) return '<?php\n\nfunction solution($input) {\n    // Logic here\n}';
+    return '// Starter code template\nfunction solution(input) {\n}';
+  };
+
+  const industries = ['FinTech', 'HealthTech', 'E-commerce', 'Cybersecurity', 'GameDev', 'SaaS', 'EdTech', 'Logistics', 'Robotics', 'Web3'];
+  const flavor = industries[Math.floor(Math.random() * industries.length)];
+  const variationId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
   const prompt = isMcq ?
-    `Generate ${count} multiple choice questions about ${topic} at ${difficulty} level.
-     Format as valid JSON array of objects.
-     Each object MUST have:
-     "question": string,
-     "options": array of 4 strings,
-     "correct": index (0-3),
-     "explanation": string.
-     Output ONLY the JSON array.` :
-    `Generate ${count} coding challenges about ${topic} at ${difficulty} level.
-     Format as valid JSON array of objects.
-     Each object MUST have:
-     "title": string,
-     "description": string,
-     "starterCode": string (valid initial code),
-     "input": string (example input),
-     "output": string (expected output),
-     "timeLimit": string (in minutes),
-     "constraints": array of strings.
-     Keep instructions concise. Output ONLY the JSON array.`;
+    `You are a senior technical SME. Topic: "${topic}". Industry Focus: ${flavor}. VARIATION ID: ${variationId}.
+Generate ${count} MCQ questions. REQUIREMENTS:
+- Technically perfect, zero ambiguity
+- Detailed "Smart Explanations" that explain "Why A is right" AND "Why others are wrong"
+- Professional tone, similar to AWS/GCP certification exams
+- NOVELTY: Avoid common/cliché questions. Create unique scenarios.
+    - Detailed "Smart Explanations" that explain "Why A is right" AND "Why others are wrong"
+      - Professional tone, similar to AWS / GCP certification exams
+        - NOVELTY: Avoid common / cliché questions.Create unique scenarios.
+- VARIATION SEED: ${Date.now()}
+
+Return ONLY a JSON object:
+  {
+    "questions": [
+      {
+        "question": "Question text?",
+        "options": ["A", "B", "C", "D"],
+        "correct": 0,
+        "explanation": "Expert walkthrough..."
+      }
+    ]
+  } ` :
+
+    isFramework ?
+      `You are a senior software architect and tech lead. Topic: "${topic}". Industry Context: ${flavor}.
+Difficulty: ${difficulty.toUpperCase()}. VARIATION ID: ${variationId}.
+
+Generate ${count} challenge(s). QUALITY STANDARDS:
+1. COMPREHENSIVE DESCRIPTION (MANDATORY STRUCTURE): 
+   - A single Markdown string with:
+     ## 🌐 Project Context
+  [Explain the real - world scenario]
+     ## 🎯 Task
+  [Explain exactly what the user needs to build / complete]
+     ## 🛠️ Technical Requirements
+  [List specific libraries, patterns, or algorithms to use]
+  - The learner must be able to complete the project using ONLY this description.
+2. STARTER SYNC(MANDATORY):
+  - 'starterCode' MUST have a functional code entry for EVERY single file mentioned in your 'projectStructure' tree.
+   - ** ZERO DEBT **: Do not omit any files.If a file is shown in the tree view, its full boilerplate must be present in the JSON object.
+   - Include a comprehensive 'package.json' with all necessary dependencies.
+   - Code must be high - quality, include all necessary imports / configs, and follow professional patterns.
+3. WORKING BOILERPLATE(WITHOUT LOGIC):
+  - Structural files(configs, types, basic routing, package.json) must be PROVIDED and WORKING.
+   - ** THE ABSOLUTE MINIMALIST RULE **: Every component / logic file MUST be strictly less than 15 lines of code.
+   - ** LOGIC STRIPPING **: Provide ONLY the component signature and total empty stubs.
+   - ** FORBIDDEN **: Do NOT provide UI layout, JSX loops, state management, or business logic.
+   - Leave clear "// TODO" sections for the student.
+4. NOVELTY & VARIETY(CRITICAL):
+  - Use a unique real - world scenario every time.
+   - VARIATION SEED: ${Date.now()} -${Math.random()}
+  - Avoid generic "Todo List" or "Counter" apps unless explicitly requested.
+
+Return ONLY a JSON object:
+  {
+    "questions": [
+      {
+        "title": "Project Title",
+        "description": "Comprehensive Markdown string with ## Context, ## Task, and ## Requirements headers.",
+        "projectStructure": "ASCII Tree View (MANDATORY FORMAT):\n.\n├── src\n│   ├── ...",
+        "starterCode": {
+          "src/components/Task.tsx": "import React from 'react';\n\nexport const Task = ({ data }) => {\n  // TODO: Implement the Task rendering logic\n  return <div className='task-item'>{/* UI Placeholder */}</div>;\n};",
+          "package.json": "{...}"
+        },
+        "input": "User Scenario",
+        "output": "Expected Result",
+        "examples": [{ "input": "...", "output": "...", "explanation": "..." }],
+        "testCases": [
+          { "input": "...", "output": "...", "hidden": false },
+          { "input": "...", "output": "...", "hidden": true }
+        ],
+        "timeLimit": "120",
+        "constraints": ["Usage of ${topic} patterns", "Strict modularity"],
+        "hints": ["Strategic Hint", "Technical Tip"]
+      }
+    ]
+  } ` :
+
+      `You are a competitive programming expert. Context: ${topic}. Scenario Context: ${flavor}.
+Complexity: ${difficulty.toUpperCase()} (${difficultyContext}). VARIATION ID: ${variationId}.
+
+Generate ${count} challenge(s). CRYSTAL CLEAR QUALITY STANDARDS:
+1. PROBLEM DESCRIPTION (STRING ONLY):
+  - MUST be a single string using Markdown.
+  - Learner should understand EXACTLY what to do from this description alone.
+   - Separate into "Context", "Task", and "Technical Goal".
+   - Use Markdown strictly(ticks for variable names, bold for emphasis).
+2. EXAMPLES(MANDATORY 2 - 3):
+  - Every example MUST have: 'Input', 'Output', and a 'Detailed Explanation' of how the result was derived.
+3. CONSTRAINTS(MANDATORY):
+  - Provide a technical constraints list(e.g., Array length, Value ranges).
+4. STARTER CODE(ABSOLUTE MINIMALIST SKELETON):
+  - Provide VALID and FUNCTIONAL signature / template.
+   - ** LOGIC STRIPPING RULE(MANDATORY) **: DO NOT provide even a single line of logic inside functions or classes.
+   - ** FORBIDDEN **: No initialization of variables, no loops, no if-statements, no helper logic.
+   - ONLY provide the 'def', 'class', or 'interface' declaration and a single TODO comment.
+   - Use 'pass'(Python), 'null'(Java / JS), or 'return 0/[]' as absolute bare minimums.
+5. NOVELTY & RANDOMIZATION(CRITICAL):
+  - Create UNIQUE scenarios.Avoid overused clones.
+   - VARIATION SEED: ${Date.now()} -${Math.random()}
+  - Introduce unexpected constraints or data formats to force creative logic.
+
+Return ONLY a JSON object:
+  {
+    "questions": [
+      {
+        "title": "Problem Title",
+        "description": "Clear Markdown string explaining everything.",
+        "starterCode": "def solution(input_data):\n    # TODO: Implement the solution from scratch\n    pass",
+        "input": "Input details",
+        "output": "Output details",
+        "examples": [
+          { "input": "...", "output": "...", "explanation": "Detailed walkthrough" }
+        ],
+        "testCases": [
+          { "input": "...", "output": "...", "hidden": false },
+          { "input": "...", "output": "...", "hidden": true }
+        ],
+        "timeLimit": "60",
+        "constraints": ["Constraint 1", "Constraint 2"],
+        "hints": ["Hint 1", "Hint 2"]
+      }
+    ]
+  } `;
+
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${state.groqKey}`
+      'Authorization': `Bearer ${state.groqKey} `
     },
     body: JSON.stringify({
       model: state.groqModel,
       messages: [
-        { role: 'system', content: 'You are an expert technical interviewer and SME. You output ONLY valid JSON.' },
+        { role: 'system', content: 'You are an expert technical SME and software architect. You output ONLY valid JSON with no markdown formatting.' },
         { role: 'user', content: prompt }
       ],
-      temperature: 0.7,
+      temperature: 0.7, // Increased for variety and creativity
+      max_tokens: 4096,
       response_format: { type: 'json_object' }
     })
   });
@@ -1154,7 +1196,6 @@ async function generateAIQuestions(topic, type, difficulty, count, category, sub
   const data = await response.json();
   let content = data.choices[0].message.content;
 
-  // Parse logic (handle potential wrapping or extra text if model ignores system instruction)
   try {
     const parsed = JSON.parse(content);
     const questions = parsed.questions || parsed.data || (Array.isArray(parsed) ? parsed : Object.values(parsed)[0]);
@@ -1174,6 +1215,7 @@ async function generateAIQuestions(topic, type, difficulty, count, category, sub
     throw new Error('Failed to parse AI response. Try again.');
   }
 }
+
 
 function generateMockQuestions(topic, type, difficulty, count, category, subtopic, smeName) {
   const questions = [];
@@ -1199,7 +1241,7 @@ function generateMockQuestions(topic, type, difficulty, count, category, subtopi
 
     if (type === 'mcq') {
       let qData = (isPython && pythonPool.mcq[i % pythonPool.mcq.length]) || {
-        q: `Which concept of ${topic} is primary in ${difficulty} operations?`,
+        q: `Which concept of ${topic} is primary in ${difficulty} operations ? `,
         opts: ["A", "B", "C", "D"], correct: 0, exp: "Explanation here."
       };
 
@@ -1213,9 +1255,9 @@ function generateMockQuestions(topic, type, difficulty, count, category, subtopi
       });
     } else {
       let qData = (isPython && pythonPool.coding[i % pythonPool.coding.length]) || {
-        title: `${topic} Module ${i + 1}`,
+        title: `${topic} Module ${i + 1} `,
         desc: `Implement ${topic} core logic for ${difficulty} level.`,
-        starter: `def solve():\n    pass`,
+        starter: `def solve(): \n    pass`,
         input: "test_input",
         output: "test_output"
       };
@@ -1234,6 +1276,113 @@ function generateMockQuestions(topic, type, difficulty, count, category, subtopi
     }
   }
   return questions;
+}
+
+function downloadQuestions(questions, type, format) {
+  const timestamp = new Date().toISOString().slice(0, 10);
+  const subtopic = questions[0]?.subtopic || questions[0]?.title || 'questions';
+  const safeFilename = `${subtopic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${timestamp} `;
+
+  if (format === 'json') {
+    const blob = new Blob([JSON.stringify(questions, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${safeFilename}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast('success', 'Downloaded as JSON!');
+    return;
+  }
+
+  // Markdown export
+  let md = `# Question Bank — ${subtopic} \n`;
+  md += `** Type:** ${type.toUpperCase()} | ** Generated:** ${new Date().toLocaleDateString()} \n\n-- -\n\n`;
+
+  questions.forEach((q, i) => {
+    if (type === 'mcq') {
+      md += `## Q${i + 1}. ${q.question} \n\n`;
+      md += `** Difficulty:** ${q.difficulty || 'N/A'} \n\n`;
+      (q.options || []).forEach((opt, idx) => {
+        const marker = idx === q.correct ? '✅' : '⬜';
+        md += `${marker} ** ${String.fromCharCode(65 + idx)}.** ${opt} \n`;
+      });
+      if (q.explanation) md += `\n > ** Explanation:** ${q.explanation} \n`;
+      md += `\n-- -\n\n`;
+    } else {
+      md += `## ${i + 1}. ${q.title} \n\n`;
+      md += `** Difficulty:** ${q.difficulty || 'N/A'} | ** Time Limit:** ${q.timeLimit || '45'} mins\n\n`;
+      md += `### 📋 Description\n${q.description} \n\n`;
+
+      // Project Structure (for framework challenges)
+      if (q.projectStructure) {
+        md += `### 📁 Project Structure\n\`\`\`\n${q.projectStructure}\n\`\`\`\n\n`;
+      }
+
+      // Starter Code — all files merged into one block in the single Markdown file
+      if (q.starterCode) {
+        if (typeof q.starterCode === 'object') {
+          md += `### 💻 Project Starter Code\n\n`;
+          md += `> All project files are included below in sequence. Copy each section into the corresponding file.\n\n`;
+          Object.entries(q.starterCode).forEach(([filename, code]) => {
+            const ext = filename.split('.').pop();
+            const langMap = { js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', json: 'json', py: 'python', html: 'html', css: 'css', md: 'markdown' };
+            const lang = langMap[ext] || ext;
+            md += `#### 📄 \`${filename}\`\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`;
+          });
+        } else {
+          md += `### 💻 Starter Code\n\n\`\`\`\n${q.starterCode}\n\`\`\`\n\n`;
+        }
+      }
+
+      md += `### 📥 Input Format\n${q.input || 'N/A'}\n\n`;
+      md += `### 📤 Output Format\n${q.output || 'N/A'}\n\n`;
+
+      if (q.examples && Array.isArray(q.examples)) {
+        md += `### 📌 Examples\n\n`;
+        q.examples.forEach((ex, idx) => {
+          md += `#### Example ${idx + 1}\n`;
+          md += `**Input:** \`${ex.input}\`  \n`;
+          md += `**Output:** \`${ex.output}\`  \n`;
+          if (ex.explanation) md += `**Explanation:** ${ex.explanation}  \n`;
+          md += `\n`;
+        });
+      } else if (q.input && q.output) {
+        md += `### 📌 Example Case\n`;
+        md += `**Input:** \`${q.input}\`  \n`;
+        md += `**Output:** \`${q.output}\`  \n\n`;
+      }
+
+      if (q.constraints && q.constraints.length) {
+        md += `### ⚙️ Constraints\n`;
+        q.constraints.forEach(c => { md += `- ${c}\n`; });
+        md += `\n`;
+      }
+
+      if (q.hints && q.hints.length) {
+        md += `### 💡 Hints\n`;
+        q.hints.forEach((h, idx) => { md += `${idx + 1}. ${h}\n`; });
+        md += `\n`;
+      }
+
+      if (q.testCases && q.testCases.length) {
+        md += `### 🧪 Test Case Suite\n\n`;
+        md += `| Case | Input | Output | Access |\n`;
+        md += `| :--- | :--- | :--- | :--- |\n`;
+        q.testCases.forEach((tc, idx) => {
+          md += `| ${idx + 1} | \`${tc.input}\` | \`${tc.output}\` | ${tc.hidden ? '🔒 Hidden' : '👁️ Visible'} |\n`;
+        });
+        md += `\n`;
+      }
+
+      md += `---\n\n`;
+    }
+  });
+
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${safeFilename}.md`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('success', 'Downloaded as Markdown!');
 }
 
 function renderGeneratedPreview(questions, type) {
@@ -1257,9 +1406,13 @@ function renderGeneratedPreview(questions, type) {
         <input type="checkbox" id="select-all-gen" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);">
         <label for="select-all-gen" style="font-size: 0.9rem; cursor: pointer; user-select: none; font-weight: 600;">Select All (${questions.length})</label>
       </div>
-      <button class="btn btn-danger btn-sm" id="delete-selected-btn" disabled style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px;">
-        🗑️ Delete Selected
-      </button>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        ${type === 'mcq' ? `
+          <button class="btn btn-secondary btn-sm" id="download-json-btn" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px;">⬇️ JSON</button>
+          <button class="btn btn-secondary btn-sm" id="download-md-btn" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px;">📄 Markdown</button>
+        ` : ''}
+        <button class="btn btn-danger btn-sm" id="delete-selected-btn" disabled style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px;">🗑️ Delete Selected</button>
+      </div>
     </div>
     <div class="preview-list">
       ${questions.map((q, idx) => `
@@ -1279,6 +1432,9 @@ function renderGeneratedPreview(questions, type) {
           <div class="gen-card-right">
             <button class="btn btn-secondary btn-sm preview-detail-btn" data-index="${idx}" style="padding: 6px 10px;">
               👁️ View
+            </button>
+            <button class="btn btn-secondary btn-sm download-single-btn" data-index="${idx}" title="${type === 'coding' ? 'Download Project ZIP' : 'Download this question'}" style="padding: 6px 10px;">
+              ${type === 'coding' ? '📦 ZIP' : '⬇️'}
             </button>
             <button class="btn btn-danger btn-sm delete-gen-btn" data-index="${idx}" style="padding: 6px 10px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--danger-light);">
               🗑️
@@ -1333,6 +1489,31 @@ function renderGeneratedPreview(questions, type) {
       renderGeneratedPreview(state.lastGenerated, state.lastGeneratedType);
       showToast('success', `Deleted ${checkedIndices.length} questions`);
     });
+  }
+
+  // Per-question individual download
+  container.querySelectorAll('.download-single-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.closest('.download-single-btn').dataset.index);
+      const q = questions[idx];
+      if (type === 'coding' || q.type === 'coding') {
+        downloadAsZip(q);
+      } else {
+        downloadQuestions([q], type, 'md');
+      }
+    });
+  });
+
+  // Download all JSON
+  const dlJsonBtn = document.getElementById('download-json-btn');
+  if (dlJsonBtn) {
+    dlJsonBtn.addEventListener('click', () => downloadQuestions(questions, type, 'json'));
+  }
+
+  // Download Markdown
+  const dlMdBtn = document.getElementById('download-md-btn');
+  if (dlMdBtn) {
+    dlMdBtn.addEventListener('click', () => downloadQuestions(questions, type, 'md'));
   }
 
   // Detail View
@@ -1402,44 +1583,143 @@ function showQuestionDetailModal(q, type, onSave) {
               `).join('')}
             </div>
           </div>
+          <div class="form-group" style="margin-top: 20px;">
+            <label class="form-label">Explanation</label>
+            <textarea class="form-input" id="edit-explanation" style="min-height: 80px;">${q.explanation || ''}</textarea>
+          </div>
         ` : `
           <div class="form-group" style="margin-top: 20px;">
             <label class="form-label">Problem Title</label>
             <input type="text" class="form-input" id="edit-title" value="${q.title}">
           </div>
           <div class="form-group" style="margin-top: 20px;">
-            <label class="form-label">Description</label>
-            <textarea class="form-input" id="edit-desc" style="min-height: 100px;">${q.description}</textarea>
+            <label class="form-label">Description (Markdown Supported)</label>
+            <textarea class="form-input" id="edit-desc" style="min-height: 120px;">${typeof q.description === 'object' ? JSON.stringify(q.description, null, 2) : q.description}</textarea>
           </div>
+
+          ${q.projectStructure ? `
+          <div class="form-group" style="margin-top: 24px;">
+            <div class="editor-section-card">
+              <div class="editor-section-header">
+                <span style="font-size: 1.1rem;">📂</span>
+                <span class="editor-section-title">Project Structure (Tree View)</span>
+              </div>
+              <div class="editor-project-tree" style="background: #0d0d16; color: #a5b4fc; font-weight: 500;">${q.projectStructure}</div>
+            </div>
+          </div>
+          ` : ''}
+
+          <div class="form-group" style="margin-top: 24px;">
+            <div class="editor-section-card">
+              <div class="editor-section-header">
+                <span style="font-size: 1.1rem;">💻</span>
+                <span class="editor-section-title">Starter Code ${typeof q.starterCode === 'object' ? '(Multi-File Project)' : ''}</span>
+              </div>
+              <div class="editor-file-list">
+                ${typeof q.starterCode === 'object' ?
+      Object.entries(q.starterCode).map(([filename, code]) => `
+                    <div class="editor-file-item">
+                      <div class="editor-file-label">📄 ${filename}</div>
+                      <textarea class="form-input multi-file-code editor-code-area" data-filename="${filename}" placeholder="Code for ${filename}">${code}</textarea>
+                    </div>
+                  `).join('') : `
+                  <textarea class="form-input editor-code-area" id="edit-starter" style="min-height: 200px;" placeholder="Base starter code...">${q.starterCode || ''}</textarea>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <div class="edit-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+            <div class="form-group">
+              <label class="form-label">Primary Sample Input</label>
+              <textarea class="form-input" id="edit-input" rows="2" style="font-family: monospace;">${q.input || ''}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Primary Expected Output</label>
+              <textarea class="form-input" id="edit-output" rows="2" style="font-family: monospace;">${q.output || ''}</textarea>
+            </div>
+          </div>
+          <div class="form-group" style="margin-top: 15px;">
+             <label class="form-label">Timer (Minutes)</label>
+             <input type="number" class="form-input" id="edit-timer" value="${q.timeLimit || '45'}" style="width: 120px;">
+          </div>
+
           <div class="form-group" style="margin-top: 20px;">
-            <label class="form-label">Starter Code</label>
-            <textarea class="form-input" id="edit-starter" style="min-height: 150px; font-family: monospace; font-size: 0.9rem; background: rgba(0,0,0,0.2);">${q.starterCode || ''}</textarea>
+            <label class="form-label">⚙️ Constraints (One per line)</label>
+            <textarea class="form-input" id="edit-constraints" style="min-height: 80px;" placeholder="e.g.\nTime Complexity: O(N)\nSpace Complexity: O(1)">${(q.constraints || []).join('\n')}</textarea>
           </div>
-          <div class="edit-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px;">
-            <div class="form-group">
-              <label class="form-label">Target Input</label>
-              <input type="text" class="form-input" id="edit-input" value="${q.input || ''}">
+
+          <div class="form-group" style="margin-top: 20px;">
+            <label class="form-label">💡 Language-Specific Hints (One per line)</label>
+            <textarea class="form-input" id="edit-hints" style="min-height: 80px;" placeholder="e.g.\nUse a Hashmap for O(1) lookups\nTraverse the array once">${(q.hints || []).join('\n')}</textarea>
+          </div>
+
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed var(--border);">
+            <p class="form-label" style="display: flex; align-items: center; gap: 8px; font-size: 1rem; color: var(--primary-light);">
+               🧪 Advanced Test Case Suite
+            </p>
+            <div id="edit-testcases-container">
+              ${[0, 1, 2, 3, 4].map(i => {
+        let tc = (q.testCases && q.testCases[i]) || { input: '', output: '', hidden: i >= 2 };
+        return `
+                  <div style="margin-bottom: 15px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                      <span style="font-size: 0.75rem; font-weight: 700; opacity: 0.7;">CASE ${i + 1}</span>
+                      <label style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" class="edit-tc-hidden" ${tc.hidden ? 'checked' : ''}> Hidden Case
+                      </label>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                      <input type="text" class="form-input edit-tc-input" value="${tc.input}" placeholder="Input" style="font-family: monospace; font-size: 0.8rem;">
+                      <input type="text" class="form-input edit-tc-output" value="${tc.output}" placeholder="Output" style="font-family: monospace; font-size: 0.8rem;">
+                    </div>
+                  </div>
+                `;
+      }).join('')}
             </div>
-            <div class="form-group">
-              <label class="form-label">Expected Output</label>
-              <input type="text" class="form-input" id="edit-output" value="${q.output || ''}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Timer (Minutes)</label>
-              <input type="number" class="form-input" id="edit-timer" value="${q.timeLimit || '30'}">
-            </div>
+          </div>
+
+          <div style="margin-top: 25px; padding-top: 20px; border-top: 1px dashed var(--border);">
+            <p class="form-label" style="display: flex; align-items: center; gap: 8px;">
+               📌 Examples (2 Cases)
+            </p>
+            ${[0, 1].map(i => {
+        let ex = (q.examples && q.examples[i]);
+        // Fallback for Case 1 if examples are missing
+        if (!ex && i === 0 && (q.input || q.output)) {
+          ex = { input: q.input || '', output: q.output || '', explanation: 'Primary case logic' };
+        }
+        ex = ex || { input: '', output: '', explanation: '' };
+
+        return `
+                <div style="margin-bottom: 20px; padding: 15px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px;">
+                  <div class="form-group">
+                    <label class="form-label" style="font-weight: 700; color: var(--primary-light);">Example ${i + 1} Input</label>
+                    <textarea class="form-input edit-ex-input" rows="2" style="font-family: monospace; background: rgba(0,0,0,0.2);">${ex.input}</textarea>
+                  </div>
+                  <div class="form-group" style="margin-top: 12px;">
+                    <label class="form-label" style="font-weight: 700; color: var(--primary-light);">Example ${i + 1} Output</label>
+                    <textarea class="form-input edit-ex-output" rows="2" style="font-family: monospace; background: rgba(0,0,0,0.2);">${ex.output}</textarea>
+                  </div>
+                  <div class="form-group" style="margin-top: 12px;">
+                    <label class="form-label" style="opacity: 0.7;">Example ${i + 1} Explanation</label>
+                    <textarea class="form-input edit-ex-explain" rows="2" placeholder="e.g. Because x is prime...">${ex.explanation || ''}</textarea>
+                  </div>
+                </div>
+              `;
+      }).join('')}
           </div>
         `}
-        <div class="form-group" style="margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-          <label class="form-label" style="opacity: 0.6;">System Watermark & Integrity</label>
-          <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--primary-light); word-break: break-all;">
-            ${q.watermark || 'No watermark applied (System Default)'}
-          </div>
-        </div>
       </div>
-      <div class="modal-footer" style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 20px;">
-        <button class="btn btn-secondary" id="modal-cancel-btn">Discard Changes</button>
-        <button class="btn btn-primary" id="modal-save-btn">✨ Save Changes</button>
+      <div class="modal-footer" style="margin-top: 30px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 20px;">
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-sm" id="modal-dl-json-btn">⬇️ JSON</button>
+          <button class="btn btn-secondary btn-sm" id="modal-dl-md-btn">📄 Markdown</button>
+        </div>
+        <div style="display: flex; gap: 12px;">
+          <button class="btn btn-secondary" id="modal-cancel-btn">Discard Changes</button>
+          <button class="btn btn-primary" id="modal-save-btn">✨ Save Changes</button>
+        </div>
       </div>
     </div>
   `;
@@ -1449,6 +1729,10 @@ function showQuestionDetailModal(q, type, onSave) {
   const closeMod = () => modal.classList.remove('active');
   document.getElementById('close-modal-btn').onclick = closeMod;
   document.getElementById('modal-cancel-btn').onclick = closeMod;
+
+  // Single question download buttons in modal
+  document.getElementById('modal-dl-json-btn').onclick = () => downloadQuestions([q], type, 'json');
+  document.getElementById('modal-dl-md-btn').onclick = () => downloadQuestions([q], type, 'md');
 
   document.getElementById('modal-save-btn').onclick = () => {
     const updated = { ...q };
@@ -1461,13 +1745,49 @@ function showQuestionDetailModal(q, type, onSave) {
       updated.question = document.getElementById('edit-question').value;
       updated.correct = parseInt(document.querySelector('input[name="edit-correct"]:checked').value);
       updated.options = Array.from(document.querySelectorAll('.edit-opt-val')).map(el => el.value);
+      updated.explanation = document.getElementById('edit-explanation')?.value || q.explanation;
     } else {
       updated.title = document.getElementById('edit-title').value;
       updated.description = document.getElementById('edit-desc').value;
-      updated.starterCode = document.getElementById('edit-starter').value;
       updated.input = document.getElementById('edit-input').value;
       updated.output = document.getElementById('edit-output').value;
       updated.timeLimit = document.getElementById('edit-timer').value;
+
+      // Handle multi-file vs single file starter code
+      const multiFiles = document.querySelectorAll('.multi-file-code');
+      if (multiFiles.length > 0) {
+        const codeObj = {};
+        multiFiles.forEach(el => { codeObj[el.dataset.filename] = el.value; });
+        updated.starterCode = codeObj;
+      } else {
+        updated.starterCode = document.getElementById('edit-starter')?.value || q.starterCode;
+      }
+
+      // Save constraints and hints if edited
+      const constraintsEl = document.getElementById('edit-constraints');
+      if (constraintsEl) updated.constraints = constraintsEl.value.split('\n').filter(Boolean);
+      const hintsEl = document.getElementById('edit-hints');
+      if (hintsEl) updated.hints = hintsEl.value.split('\n').filter(Boolean);
+
+      // Save examples
+      const exInputs = document.querySelectorAll('.edit-ex-input');
+      const exOutputs = document.querySelectorAll('.edit-ex-output');
+      const exExplains = document.querySelectorAll('.edit-ex-explain');
+      updated.examples = Array.from(exInputs).map((el, i) => ({
+        input: el.value,
+        output: exOutputs[i].value,
+        explanation: exExplains[i].value
+      })).filter(ex => ex.input || ex.output);
+
+      // Save Test Cases (New)
+      const tcInputs = document.querySelectorAll('.edit-tc-input');
+      const tcOutputs = document.querySelectorAll('.edit-tc-output');
+      const tcHidden = document.querySelectorAll('.edit-tc-hidden');
+      updated.testCases = Array.from(tcInputs).map((el, i) => ({
+        input: el.value,
+        output: tcOutputs[i].value,
+        hidden: tcHidden[i].checked
+      })).filter(tc => tc.input || tc.output);
     }
 
     if (onSave) onSave(updated);
@@ -1476,6 +1796,7 @@ function showQuestionDetailModal(q, type, onSave) {
 
   modal.onclick = (e) => { if (e.target === modal) closeMod(); };
 }
+
 
 window.editSavedQuestion = async (mongoId) => {
   const q = state.savedQuestions.find(it => it._id === mongoId);
@@ -1503,6 +1824,91 @@ window.editSavedQuestion = async (mongoId) => {
     }
   });
 };
+
+window.downloadSavedQuestion = (mongoId) => {
+  const q = state.savedQuestions.find(it => it._id === mongoId);
+  if (!q) {
+    showToast('error', 'Question not found in local cache');
+    return;
+  }
+  if (q.type === 'coding') {
+    downloadAsZip(q);
+  } else {
+    downloadQuestions([q], q.type, 'md');
+  }
+};
+
+async function downloadAsZip(q) {
+  if (typeof JSZip === 'undefined') {
+    showToast('error', 'ZIP generator not ready. Refresing page might help.');
+    return;
+  }
+
+  const zip = new JSZip();
+  const folderName = (q.title || q.subtopic || 'coding_project').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const folder = zip.folder(folderName);
+
+  // 1. README.md
+  let readme = `# ${q.title || q.subtopic}\n\n`;
+  readme += `## Challenge Description\n${q.description || ''}\n\n`;
+  readme += `### Input Format\n${q.input || 'N/A'}\n\n`;
+  readme += `### Output Format\n${q.output || 'N/A'}\n\n`;
+
+  if (q.constraints && q.constraints.length) {
+    readme += `### Constraints\n`;
+    q.constraints.forEach(c => readme += `- ${c}\n`);
+    readme += `\n`;
+  }
+
+  if (q.hints && q.hints.length) {
+    readme += `### Hints\n`;
+    q.hints.forEach((h, i) => readme += `${i + 1}. ${h}\n`);
+    readme += `\n`;
+  }
+
+  folder.file("README.md", readme);
+
+  // 2. Sample Data / Examples
+  if (q.examples && q.examples.length) {
+    let exMd = `# Examples\n\n`;
+    q.examples.forEach((ex, i) => {
+      exMd += `### Example ${i + 1}\n**Input:** \`${ex.input}\`  \n**Output:** \`${ex.output}\`  \n**Explanation:** ${ex.explanation || 'N/A'}\n\n`;
+    });
+    folder.file("EXAMPLES.md", exMd);
+  }
+
+  // 3. Starter Code
+  if (typeof q.starterCode === 'object') {
+    // Multi-file project
+    Object.entries(q.starterCode).forEach(([filename, code]) => {
+      folder.file(filename, code);
+    });
+  } else {
+    // Single file
+    const extMap = { python: 'py', javascript: 'js', java: 'java', cpp: 'cpp', sql: 'sql', php: 'php', c: 'c' };
+    const topic = (q.subtopic || '').toLowerCase();
+    let ext = 'txt';
+    for (const [key, val] of Object.entries(extMap)) {
+      if (topic.includes(key)) { ext = val; break; }
+    }
+    folder.file(`solution.${ext}`, q.starterCode || '');
+  }
+
+  try {
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${folderName}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('success', 'Project ZIP generated and downloaded!');
+  } catch (err) {
+    showToast('error', 'Failed to generate ZIP');
+    console.error(err);
+  }
+}
+
 
 // =============================================
 // START TEST
@@ -1717,54 +2123,167 @@ function renderCodingProblem() {
   const p = state.problem;
   if (!p) return;
 
-  document.getElementById('problem-title').textContent = p.title;
+  // Header Title
+  const titleEl = document.getElementById('problem-title');
+  if (titleEl) titleEl.textContent = p.title;
 
-  // Meta badges
-  const diffColors = { Easy: 'badge-success', Medium: 'badge-warning', Hard: 'badge-danger' };
-  document.getElementById('problem-meta').innerHTML = `
-    <span class="badge ${diffColors[p.difficulty] || 'badge-primary'}">${p.difficulty}</span>
-    ${(p.constraints || []).map(c => `<span class="badge badge-primary">${c}</span>`).join('')}
-  `;
-
-  // Description (handle backtick formatting)
-  document.getElementById('problem-description').innerHTML =
-    p.description.replace(/`([^`]+)`/g, '<code style="background:rgba(99,102,241,0.15);padding:2px 6px;border-radius:4px;font-family:var(--font-mono);font-size:0.88em;color:var(--primary-light)">$1</code>').replace(/\n/g, '<br>');
-
-  // Examples (handle AI format which might be single string or array)
-  const examplesEl = document.getElementById('problem-examples');
-  if (p.examples && Array.isArray(p.examples)) {
-    examplesEl.innerHTML = p.examples.map((ex, i) => `
-      <div>
-        <p class="problem-section-title">📌 Example ${i + 1}</p>
-        <div class="example-box">
-          <div><span class="label">Input:</span>  ${ex.input}</div>
-          <div><span class="label">Output:</span> ${ex.output}</div>
-          ${ex.explanation ? `<div><span class="label">Explanation:</span> ${ex.explanation}</div>` : ''}
-        </div>
-      </div>
-    `).join('');
-  } else {
-    // Single example from current AI prompt structure
-    examplesEl.innerHTML = `
-      <div>
-        <p class="problem-section-title">📌 Example Case</p>
-        <div class="example-box">
-          <div><span class="label">Input:</span> ${p.input || 'N/A'}</div>
-          <div><span class="label">Output:</span> ${p.output || 'N/A'}</div>
-        </div>
+  // Metadata Header (LeetCode Style)
+  const metaEl = document.getElementById('problem-meta');
+  if (metaEl) {
+    const diffColors = { Easy: 'badge-success', Medium: 'badge-warning', Hard: 'badge-danger' };
+    metaEl.innerHTML = `
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span class="badge ${diffColors[p.difficulty] || 'badge-primary'}" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 12px;">${p.difficulty}</span>
+        <button class="btn btn-secondary btn-sm" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); padding: 4px 10px; font-size: 0.75rem; border-radius: 12px; height: auto;">🏷️ Topics</button>
       </div>
     `;
   }
 
-  // Constraints
-  document.getElementById('problem-constraints').innerHTML =
-    (p.constraints || []).map(c => `<li>${c}</li>`).join('');
+  // Description
+  const descriptionEl = document.getElementById('problem-description');
+  if (descriptionEl) {
+    let desc = p.description;
+    if (typeof desc === 'object') {
+      desc = desc.task || desc.objective || JSON.stringify(desc, null, 2);
+    }
+    descriptionEl.innerHTML = (desc || '')
+      .replace(/`([^`]+)`/g, '<code class="code-span">$1</code>')
+      .split('\n').map(line => line.trim() ? `<p style="margin-bottom: 20px; line-height: 1.6; color: #f1f5f9; font-size: 0.95rem;">${line}</p>` : '').join('');
+  }
 
-  // Editor - Handle AI string starter vs legacy object
-  const starter = typeof p.starterCode === 'string' ? p.starterCode : (p.starterCode?.[state.language] || '');
-  document.getElementById('code-editor').value = starter;
+  // Examples
+  const examplesEl = document.getElementById('problem-examples');
+  if (examplesEl && p.examples && Array.isArray(p.examples)) {
+    examplesEl.innerHTML = p.examples.map((ex, i) => `
+      <div style="margin-bottom: 30px;">
+        <p style="font-weight: 600; margin-bottom: 12px; font-size: 1rem; color: #fff;">Example ${i + 1}:</p>
+        <div class="example-box" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 20px; border-radius: 8px;">
+          <div style="margin-bottom: 8px;"><strong style="color: #94a3b8; font-family: var(--font-mono); font-size: 0.85rem; display: inline-block; width: 85px;">Input:</strong> <span style="font-family: var(--font-mono); color: #fff; font-size: 0.9rem;">${ex.input}</span></div>
+          <div style="margin-bottom: 8px;"><strong style="color: #94a3b8; font-family: var(--font-mono); font-size: 0.85rem; display: inline-block; width: 85px;">Output:</strong> <span style="font-family: var(--font-mono); color: #fff; font-size: 0.9rem;">${ex.output}</span></div>
+          ${ex.explanation ? `<div style="margin-top: 15px; font-size: 0.9rem; color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;"><strong style="color: #94a3b8; font-size: 0.85rem;">Explanation:</strong> ${ex.explanation}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Constraints section
+  const constraintsContainer = document.getElementById('problem-constraints');
+  if (constraintsContainer) {
+    if (p.constraints && p.constraints.length) {
+      constraintsContainer.innerHTML = `
+        <p style="font-weight: 600; margin-bottom: 15px; font-size: 1rem; color: #fff;">Constraints:</p>
+        <ul style="list-style: none; padding: 0; color: #94a3b8; font-size: 0.9rem;">
+          ${p.constraints.map(c => `<li style="margin-bottom: 10px; display: flex; align-items: flex-start; gap: 10px;"><span style="color: var(--primary); font-size: 0.8rem;">●</span> <code class="code-span" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.1);">${c}</code></li>`).join('')}
+        </ul>
+      `;
+    } else {
+      constraintsContainer.innerHTML = '';
+    }
+  }
+
+  // Project Structure (Only if relevant for subjects/frameworks)
+  const structurePanel = document.getElementById('project-structure-panel');
+  if (structurePanel) {
+    if (p.projectStructure) {
+      structurePanel.style.display = 'block';
+      structurePanel.innerHTML = `
+        <p style="font-weight: 600; margin: 30px 0 15px 0; font-size: 1rem; color: #fff;">Project Structure:</p>
+        <div class="editor-project-tree" style="background: rgba(13, 13, 26, 0.4); border: 1px solid var(--border);">${p.projectStructure}</div>
+      `;
+    } else {
+      structurePanel.style.display = 'none';
+    }
+  }
+
+  // Editor - Handle AI string starter vs multi-file object
+  const tabsContainer = document.getElementById('file-tabs-container');
+  if (p.starterCode && typeof p.starterCode === 'object') {
+    // Initialize working code if not already set or if problem changed
+    state.workingCode = { ...p.starterCode };
+    const files = Object.keys(p.starterCode);
+    state.activeFile = files.find(f => f.toLowerCase().includes('app') || f.toLowerCase().includes('solution') || f.toLowerCase().includes('main') || f.endsWith('.js') || f.endsWith('.py')) || files[0];
+
+    if (tabsContainer) {
+      tabsContainer.style.display = 'flex';
+      tabsContainer.style.alignItems = 'center';
+      tabsContainer.innerHTML = files.map(file => {
+        const isActive = file === state.activeFile;
+        return `
+          <div class="file-tab" onclick="switchFile('${file}')" style="
+            display: inline-flex;
+            align-items: center;
+            padding: 0 16px;
+            height: 100%;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            cursor: pointer;
+            border-right: 1px solid var(--border);
+            color: ${isActive ? 'var(--primary-light)' : 'var(--text-muted)'};
+            background: ${isActive ? 'rgba(255,255,255,0.05)' : 'transparent'};
+            transition: var(--transition);
+          ">
+            📄 ${file}
+          </div>
+        `;
+      }).join('');
+    }
+    document.getElementById('code-editor').value = state.workingCode[state.activeFile] || '';
+  } else {
+    if (tabsContainer) tabsContainer.style.display = 'none';
+    document.getElementById('code-editor').value = p.starterCode || '';
+    state.activeFile = null;
+    state.workingCode = {};
+  }
+
   document.getElementById('lang-select').value = state.language;
 }
+
+// Global functions for interactive elements
+window.switchFile = (filename) => {
+  if (!state.activeFile || !state.workingCode) return;
+
+  // Save current work
+  state.workingCode[state.activeFile] = document.getElementById('code-editor').value;
+
+  // Update active file
+  state.activeFile = filename;
+  document.getElementById('code-editor').value = state.workingCode[filename] || '';
+
+  // Update UI tabs
+  document.querySelectorAll('.file-tab').forEach(tab => {
+    const isMatched = tab.textContent.trim().includes(filename);
+    tab.style.color = isMatched ? 'var(--primary-light)' : 'var(--text-muted)';
+    tab.style.background = isMatched ? 'rgba(255,255,255,0.05)' : 'transparent';
+  });
+
+  showToast('info', `Switched to: ${filename}`);
+};
+
+window.toggleHint = (idx) => {
+  const content = document.getElementById(`hint-content-${idx}`);
+  if (content) content.classList.toggle('active');
+};
+
+window.selectTestCase = (idx) => {
+  state.selectedTestCaseIndex = idx;
+  document.querySelectorAll('.test-card').forEach((c, i) => {
+    c.classList.toggle('active', i === idx);
+  });
+  const p = state.problem;
+  const visibleTests = (p.testCases || []).filter(t => !t.hidden);
+  const test = visibleTests[idx];
+  if (test) {
+    const output = document.getElementById('output-content');
+    output.innerHTML = `
+      <div style="margin-bottom: 10px; opacity: 0.7; font-size: 0.8rem;">Selected Test Case ${idx + 1}:</div>
+      <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; font-family: monospace;">
+        <div><span style="color: var(--primary-light)">Input:</span> ${test.input}</div>
+        <div><span style="color: var(--primary-light)">Expected:</span> ${test.output}</div>
+      </div>
+    `;
+  }
+};
+
 
 
 function attachCodingListeners() {
@@ -1775,8 +2294,9 @@ function attachCodingListeners() {
     showToast('info', `Switched to ${e.target.options[e.target.selectedIndex].text}`);
   });
 
-  // Tab key in editor
-  document.getElementById('code-editor').addEventListener('keydown', (e) => {
+  // Tab key and Real-time Sync
+  const editor = document.getElementById('code-editor');
+  editor.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
       const ta = e.target;
@@ -1784,6 +2304,15 @@ function attachCodingListeners() {
       const end = ta.selectionEnd;
       ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
       ta.selectionStart = ta.selectionEnd = start + 4;
+
+      // Update working code after tab manipulation
+      if (state.activeFile) state.workingCode[state.activeFile] = ta.value;
+    }
+  });
+
+  editor.addEventListener('input', (e) => {
+    if (state.activeFile) {
+      state.workingCode[state.activeFile] = e.target.value;
     }
   });
 
@@ -1821,49 +2350,54 @@ async function runCode() {
   outputEl.textContent = '⏳ AI is executing your code...';
 
   try {
+    const visibleTests = (p.testCases || []).filter(t => !t.hidden);
+    const selectedTest = visibleTests[state.selectedTestCaseIndex] || { input: p.input, output: p.output };
+
     const prompt = `
-      [STRICT SYSTEM RULE: OUTPUT ONLY THE RAW EXECUTION RESULT. NO REASONING. NO EXPLANATIONS. NO CONVERSATIONAL TEXT.]
-      
+      [EXECUTION ENVIRONMENT]
       Runtime: ${state.language}
-      Problem Context: ${p.title}
+      Goal: Solve "${p.title}"
       
-      Test Case Input: ${p.input || 'N/A'}
+      Input to Process: ${selectedTest.input}
+      Expected Behavior: ${selectedTest.output}
       
-      Executing Code:
+      [PROJECT CONTEXT]
+      ${p.projectStructure ? `Architecture:\n${p.projectStructure}` : 'Single-file problem.'}
+      
+      Code to Execute (Current File):
       \`\`\`${state.language}
       ${code}
       \`\`\`
       
-      [INSTRUCTION]: 
-      1. If the code is correct, return ONLY the resulting output (as an ASCII table if SQL, or as console logs if programming).
-      2. If the code has errors, return ONLY the specific error message (e.g. "SyntaxError: ...").
-      3. ABSOLUTELY NO text like "To execute this..." or "Based on the table...".
+      [RULES]
+      1. Return ONLY the literal output/console logs of this code. 
+      2. If it fails, return ONLY the clear error message.
+      3. No surrounding text. No explanation.
     `;
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${state.groqKey}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.groqKey}` },
       body: JSON.stringify({
         model: state.groqModel,
-        messages: [
-          { role: 'system', content: 'You are a raw terminal environment. You lack human social skills. You output ONLY the literal result of code execution. Zero conversation.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.0 // Minimum temperature for maximum consistency
+        messages: [{ role: 'system', content: 'You are a raw stdout stream. Output ONLY data.' }, { role: 'user', content: prompt }],
+        temperature: 0.0
       })
     });
 
-    if (!response.ok) throw new Error('API Request Failed');
+    if (!response.ok) throw new Error('AI Execution Service Down');
 
     const data = await response.json();
     const result = data.choices[0].message.content.trim();
 
-    outputEl.className = 'output-content success';
-    outputEl.textContent = result;
-    showToast('success', 'Code execution finished.');
+    const isCorrect = result.toLowerCase().includes(selectedTest.output.toLowerCase());
+
+    outputEl.className = `output-content ${isCorrect ? 'success' : 'error'}`;
+    outputEl.innerHTML = `
+      <div style="margin-bottom: 5px; font-weight: 700; color: ${isCorrect ? '#10b981' : '#ef4444'}">${isCorrect ? '✔ Passed' : '✖ Result Mismatch'}</div>
+      <div style="font-family: monospace; opacity: 0.9;">${result}</div>
+    `;
+    showToast(isCorrect ? 'success' : 'info', isCorrect ? 'Test case passed!' : 'Result mismatch for selected input.');
   } catch (error) {
     console.error(error);
     outputEl.className = 'output-content error';
@@ -1876,8 +2410,13 @@ async function submitCode() {
   const code = document.getElementById('code-editor').value.trim();
   const p = state.problem;
 
-  if (!code || code === (typeof p.starterCode === 'string' ? p.starterCode : p.starterCode[state.language])) {
-    showToast('error', 'Please write your solution before submitting!');
+  const isMultiFile = typeof p.starterCode === 'object';
+  const isModified = isMultiFile
+    ? true // For multi-file we assume they might have changed something other than just the current editor
+    : (code !== p.starterCode && code !== (p.starterCode?.[state.language] || ''));
+
+  if (!code || !isModified) {
+    showToast('error', 'Please write or modify your solution before submitting!');
     return;
   }
 
@@ -1892,20 +2431,36 @@ async function submitCode() {
 
   try {
     const prompt = `
-      Evaluate the following code for the problem: "${p.title}"
-      Description: ${p.description}
-      Expected Input: ${p.input}
-      Expected Output: ${p.output}
+      Perform a deep technical evaluation of this code for the challenge: "${p.title}"
       
-      User Code:
+      [CONTEXT]
+      Core Requirements: ${p.description}
+      Visual Test Cases: ${JSON.stringify((p.testCases || []).filter(t => !t.hidden))}
+      Hidden Edge Cases (Verify Internally): ${JSON.stringify((p.testCases || []).filter(t => t.hidden))}
+      
+      [PROJECT ENVIRONMENT]
+      ${p.projectStructure ? `Full Project Structure:\n${p.projectStructure}` : 'Single standalone file.'}
+      ${typeof p.starterCode === 'object' ? `Background Project Files: ${JSON.stringify(p.starterCode)}` : ''}
+      
+      [STUDENT SUBMISSION]
       \`\`\`${state.language}
       ${code}
       \`\`\`
       
-      Return ONLY a JSON object with:
-      "passed": boolean,
-      "score": number (0-100),
-      "hint": string (Brief technical hint if failed, otherwise praise)
+      [OUTPUT FORMAT: JSON ONLY]
+      {
+        "passed": boolean,
+        "score": number, 
+        "summary": "Brief result summary",
+        "analysis": {
+           "status": "Success/Failure reason",
+           "optimizedApproach": "Describe the most efficient algorithm for this",
+           "timeComplexity": "O(log n), O(n), etc.",
+           "spaceComplexity": "O(1), O(n), etc.",
+           "visualization": "Textual representation of the algorithm flow"
+        },
+        "feedback": "Expert feedback to student"
+      }
     `;
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1913,8 +2468,8 @@ async function submitCode() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.groqKey}` },
       body: JSON.stringify({
         model: state.groqModel,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
+        messages: [{ role: 'system', content: 'You are a senior technical interviewer and algorithm expert. You output JSON only.' }, { role: 'user', content: prompt }],
+        temperature: 0.0,
         response_format: { type: 'json_object' }
       })
     });
@@ -1923,28 +2478,16 @@ async function submitCode() {
     const evaluation = JSON.parse(data.choices[0].message.content);
 
     state.codingResults[state.currentQuestion] = evaluation.passed;
-    state.codingHints[state.currentQuestion] = evaluation.hint;
+    state.codingHints[state.currentQuestion] = evaluation.analysis.optimizedApproach;
 
     showLoading(false);
+    showAIAnalysisModal(evaluation);
 
-    if (state.currentQuestion < state.questions.length - 1) {
-      // Show intermediate result
-      showToast(evaluation.passed ? 'success' : 'info', evaluation.passed ? 'Problem Solved! Moving to next...' : 'Submission received. Check hints later if needed.');
+    // If passed, we'll continue after modal close in a real app, 
+    // but here we wait for interaction. I'll add a 'Continue' button to modal.
 
-      setTimeout(() => {
-        state.currentQuestion++;
-        state.problem = state.questions[state.currentQuestion];
+    // Advancing is now handled by the 'Next challenge' button in the AI Analysis modal
 
-        const diffLabel = state.difficulty.charAt(0).toUpperCase() + state.difficulty.slice(1);
-        document.getElementById('coding-difficulty-label').textContent = `${diffLabel} · Problem ${state.currentQuestion + 1}`;
-
-        renderCodingProblem();
-      }, 1500);
-    } else {
-      stopTimer();
-      const correct = state.codingResults.filter(r => r).length;
-      showResultPage(correct, state.questions.length, 'coding');
-    }
   } catch (error) {
     console.error(error);
     showLoading(false);
@@ -2130,10 +2673,16 @@ async function updateDashboardStats() {
 
   if (!mcqEl) return;
 
+  // Efficiency: Cache-lookahead (Don't refetch if synced in last 30s)
+  const now = Date.now();
+  const isStale = now - state.lastStatsFetch > 30000;
+  if (!isStale && !force) return;
+
   try {
     const response = await fetch('http://localhost:5000/api/stats');
     if (!response.ok) throw new Error();
     const data = await response.json();
+    state.lastStatsFetch = now;
 
     // Update timestamp
     const timeEl = document.getElementById('dashboard-last-updated');
@@ -2187,7 +2736,11 @@ async function updateDashboardStats() {
       renderSMEs();
 
       if (smeSearch) {
-        smeSearch.oninput = (e) => renderSMEs(e.target.value);
+        let debounceTimer;
+        smeSearch.oninput = (e) => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => renderSMEs(e.target.value), 150);
+        };
       }
     }
 
@@ -2216,35 +2769,46 @@ async function updateDashboardStats() {
   }
 }
 
-async function fetchAndRenderSavedQuestions() {
+async function fetchAndRenderSavedQuestions(force = false) {
   const container = document.getElementById('questions-table-container');
   if (!container) return;
 
+  // Efficiency: Cache check (60s cache for the big table)
+  const now = Date.now();
+  const isStale = now - state.lastQuestionsFetch > 60000;
+
+  if (!isStale && state.savedQuestions.length > 0 && !force) {
+    console.log('📦 Using state-cached questions list');
+    renderQuestionsTable(state.savedQuestions);
+    return;
+  }
+
   container.innerHTML = `
-    <div style="padding: 40px; text-align: center;">
+    <div class="loading-state" style="padding: 100px;">
         <span class="spinner"></span>
-        <p style="margin-top: 15px; opacity: 0.7; font-weight: 500;">Fetching expert-curated questions...</p>
+        <p style="margin-top: 15px;">Syncing question bank...</p>
     </div>
   `;
 
   try {
     const response = await fetch('http://localhost:5000/api/questions');
-    if (!response.ok) throw new Error('Failed to fetch from server');
+    if (!response.ok) throw new Error();
 
     const questions = await response.json();
-    state.savedQuestions = questions; // Cache in state
+    state.savedQuestions = questions;
+    state.lastQuestionsFetch = now;
+    renderQuestionsTable(questions);
+  } catch (error) {
+    console.error(error);
+    container.innerHTML = `<div class="empty-state-v2">Failed to sync with cloud database.</div>`;
+  }
+}
 
-    if (questions.length === 0) {
-      container.innerHTML = `
-        <div style="padding: 60px; text-align: center; opacity: 0.5;">
-            <div style="font-size: 3rem; margin-bottom: 20px;">📂</div>
-            <p>No questions found in the database. Generate some first!</p>
-        </div>
-      `;
-      return;
-    }
+function renderQuestionsTable(questions) {
+  const container = document.getElementById('questions-table-container');
+  if (!container) return;
 
-    container.innerHTML = `
+  container.innerHTML = `
       <div class="table-responsive">
         <table class="admin-table">
           <thead>
@@ -2264,15 +2828,11 @@ async function fetchAndRenderSavedQuestions() {
                 <td><span class="badge badge-${q.type}">${q.type.toUpperCase()}</span></td>
                 <td><div style="font-weight: 600;">${q.subtopic}</div><div style="font-size: 0.75rem; opacity: 0.7;">${q.title || q.question.substring(0, 40) + '...'}</div></td>
                 <td><span class="diff-tag ${q.difficulty}">${q.difficulty}</span></td>
-                <td>
-                  <div style="font-weight: 500;">${q.smeName || 'System'}</div>
-                  <div style="font-size: 0.65rem; opacity: 0.5; font-family: var(--font-mono); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${q.watermark || 'System Verified'}">
-                    ${q.watermark ? q.watermark.split('|')[1]?.trim() || 'Verified' : 'N/A'}
-                  </div>
-                </td>
+                <td>${q.smeName || 'System'}</td>
                 <td>
                   <div style="display: flex; gap: 8px;">
                     <button class="btn btn-secondary btn-sm" onclick="editSavedQuestion('${q._id}')">👁️ View</button>
+                    <button class="btn btn-secondary btn-sm" onclick="downloadSavedQuestion('${q._id}')">${q.type === 'coding' ? '📦 ZIP' : '⬇️ Download'}</button>
                     <button class="btn btn-danger btn-sm" onclick="this.disabled=true; deleteSavedQuestion('${q._id}')">🗑️ Delete</button>
                   </div>
                 </td>
@@ -2282,16 +2842,6 @@ async function fetchAndRenderSavedQuestions() {
         </table>
       </div>
     `;
-  } catch (error) {
-    console.error(error);
-    container.innerHTML = `
-      <div style="padding: 40px; text-align: center; color: var(--danger-light);">
-          <div style="font-size: 3rem; margin-bottom: 20px;">⚠️</div>
-          <p>Error connecting to Database: ${error.message}</p>
-          <button class="btn btn-primary btn-sm" style="margin-top: 15px;" onclick="fetchAndRenderSavedQuestions()">Retry Connection</button>
-      </div>
-    `;
-  }
 }
 
 window.deleteSavedQuestion = async (mongoId) => {
@@ -2321,87 +2871,83 @@ window.deleteSavedQuestion = async (mongoId) => {
 };
 
 // =============================================
-// SME MANAGEMENT
-// =============================================
-async function fetchAndRenderSMEs() {
-  const container = document.getElementById('sme-list-container');
-  if (!container) return;
-
-  try {
-    const response = await fetch('http://localhost:5000/api/smes');
-    const smes = await response.json();
-    state.smes = smes;
-
-    if (smes.length === 0) {
-      container.innerHTML = `
-        <div style="text-align: center; padding: 20px; opacity: 0.5;">
-          <p>No SME profiles found. Add one to get started!</p>
-        </div>
-      `;
-      return;
-    }
-
-    container.innerHTML = smes.map(sme => `
-      <div class="sme-profile-item card-glass ${state.activeSmeId === sme._id ? 'active' : ''}" 
-           style="padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; border: 1px solid ${state.activeSmeId === sme._id ? 'var(--primary)' : 'var(--border)'}; background: ${state.activeSmeId === sme._id ? 'rgba(99, 102, 241, 0.1)' : 'transparent'};">
-        <div style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1;" onclick="setActiveSME('${sme._id}')">
-          <div style="width: 32px; height: 32px; border-radius: 50%; background: ${state.activeSmeId === sme._id ? 'var(--grad-primary)' : 'rgba(255,255,255,0.1)'}; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">
-            ${sme.name.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <div style="font-weight: 600; font-size: 0.9rem;">${sme.name}</div>
-            <div style="font-size: 0.75rem; opacity: 0.6;">${sme.model} • gsk_...${sme.apiKey.slice(-4)}</div>
-          </div>
-        </div>
-        <button class="btn btn-sm" style="background: none; border: none; padding: 0; color: var(--danger-light); opacity: 0.5;" onclick="deleteSME('${sme._id}')">🗑️</button>
-      </div>
-    `).join('');
-  } catch (error) {
-    container.innerHTML = `<p style="color: var(--danger-light);">Error: ${error.message}</p>`;
-  }
-}
-
-window.setActiveSME = (id) => {
-  state.activeSmeId = id;
-  localStorage.setItem('active_sme_id', id);
-
-  // Update state with active SME credentials
-  const sme = state.smes.find(s => s._id === id);
-  if (sme) {
-    state.groqKey = sme.apiKey;
-    state.groqModel = sme.model;
-  }
-
-  fetchAndRenderSMEs();
-
-  // Update UI displays
-  const display = document.getElementById('active-sme-name-display');
-  if (display) {
-    display.textContent = sme ? sme.name : '❌ No SME Selected';
-  }
-
-  showToast('success', 'Active SME updated');
-};
-
-window.deleteSME = async (id) => {
-  if (!confirm('Are you sure you want to delete this SME profile?')) return;
-
-  try {
-    const response = await fetch(`http://localhost:5000/api/smes/${id}`, { method: 'DELETE' });
-    if (response.ok) {
-      if (state.activeSmeId === id) {
-        state.activeSmeId = null;
-        localStorage.removeItem('active_sme_id');
-      }
-      showToast('success', 'Profile deleted');
-      fetchAndRenderSMEs();
-    }
-  } catch (error) {
-    showToast('error', 'Delete failed');
-  }
-};
-
-// =============================================
 // INIT
 // =============================================
 renderApp();
+function showAIAnalysisModal(evaluation) {
+  const modal = document.getElementById('common-modal');
+  if (!modal) return;
+
+  const isLast = state.currentQuestion >= state.questions.length - 1;
+
+  modal.innerHTML = `
+    <div class="modal-content analysis-modal" style="animation: slideIn 0.4s easeOut;">
+      <div class="modal-header">
+        <h3 style="display: flex; align-items: center; gap: 10px;">
+           <span style="font-size: 1.5rem">${evaluation.passed ? '🎉' : '💡'}</span> 
+           AI Solution Analysis
+        </h3>
+        <button class="close-btn" id="close-analysis-btn">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="analysis-section" style="border-left: 4px solid ${evaluation.passed ? '#10b981' : '#f59e0b'}">
+           <div class="analysis-title">📊 Submission Status</div>
+           <div class="analysis-body">
+             <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 5px;">${evaluation.passed ? 'ACCEPTED' : 'REJECTED'}</div>
+             <p>${evaluation.summary}</p>
+             <div class="complexity-badge">${evaluation.analysis.timeComplexity} Time | ${evaluation.analysis.spaceComplexity} Space</div>
+           </div>
+        </div>
+
+        <div class="analysis-section">
+           <div class="analysis-title">🧠 Optimized Approach</div>
+           <div class="analysis-body">${evaluation.analysis.optimizedApproach}</div>
+        </div>
+
+        <div class="analysis-section">
+           <div class="analysis-title">✨ AI Visualization</div>
+           <div class="analysis-body" style="font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.4; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; white-space: pre-wrap;">${evaluation.analysis.visualization}</div>
+        </div>
+
+        <div class="analysis-section">
+           <div class="analysis-title">🎓 Feedback from SME AI</div>
+           <div class="analysis-body">${evaluation.feedback}</div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 20px;">
+        <button class="btn btn-secondary" id="analysis-close-only">Review Code</button>
+        <button class="btn btn-primary" id="analysis-next-btn">
+          ${isLast ? 'Finish Test & Results' : 'Next Challenge →'}
+        </button>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('active');
+
+  const close = () => { modal.classList.remove('active'); };
+  document.getElementById('close-analysis-btn').onclick = close;
+  document.getElementById('analysis-close-only').onclick = close;
+
+  document.getElementById('analysis-next-btn').onclick = () => {
+    close();
+    if (isLast) {
+      stopTimer();
+      const correct = state.codingResults.filter(r => r).length;
+      showResultPage(correct, state.questions.length, 'coding');
+    } else {
+      state.currentQuestion++;
+      state.problem = state.questions[state.currentQuestion];
+      state.selectedTestCaseIndex = 0;
+
+      const diffLabel = state.difficulty.charAt(0).toUpperCase() + state.difficulty.slice(1);
+      const diffEl = document.getElementById('coding-difficulty-label');
+      if (diffEl) diffEl.textContent = `${diffLabel} · Problem ${state.currentQuestion + 1}`;
+
+      renderCodingProblem();
+      showToast('success', 'Moving to next problem');
+    }
+  };
+}

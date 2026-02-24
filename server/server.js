@@ -34,45 +34,67 @@ app.get('/api/questions', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
     try {
-        const mcqCount = await Question.countDocuments({ type: 'mcq' });
-        const codingCount = await Question.countDocuments({ type: 'coding' });
-
-        // Difficulty breakdown
-        const easyCount = await Question.countDocuments({ difficulty: 'easy' });
-        const mediumCount = await Question.countDocuments({ difficulty: 'medium' });
-        const hardCount = await Question.countDocuments({ difficulty: 'hard' });
-
-        // Topic distribution (Top 5)
-        const topicStats = await Question.aggregate([
-            { $group: { _id: "$subtopic", count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: 5 }
+        // Efficient Single-Pass Aggregation for all stats
+        const stats = await Question.aggregate([
+            {
+                $facet: {
+                    "counts": [
+                        { $group: { _id: "$type", count: { $sum: 1 } } }
+                    ],
+                    "difficulty": [
+                        { $group: { _id: "$difficulty", count: { $sum: 1 } } }
+                    ],
+                    "topTopics": [
+                        { $group: { _id: "$subtopic", count: { $sum: 1 } } },
+                        { $sort: { count: -1 } },
+                        { $limit: 5 }
+                    ],
+                    "smeStats": [
+                        { $group: { _id: "$smeName", count: { $sum: 1 } } },
+                        { $sort: { count: -1 } }
+                    ]
+                }
+            }
         ]);
 
-        // Recent activity (Last 5 questions)
+        const result = stats[0];
+
+        // Parse counts
+        const mcqCount = result.counts.find(c => c._id === 'mcq')?.count || 0;
+        const codingCount = result.counts.find(c => c._id === 'coding')?.count || 0;
+
+        // Parse difficulty
+        const diffMap = {};
+        result.difficulty.forEach(d => { diffMap[d._id] = d.count; });
+
+        // Separate fetch for recent activity (needs full documents)
         const recentQuestions = await Question.find()
             .sort({ _id: -1 })
             .limit(5)
             .select('subtopic type difficulty createdAt');
 
-        // SME Contributions
-        const smeStats = await Question.aggregate([
-            { $group: { _id: "$smeName", count: { $sum: 1 } } },
-            { $sort: { count: -1 } }
-        ]);
+        // Total SME Count - Efficiently extracted
+        const smeCount = result.smeStats.length;
 
         res.json({
             mcqCount,
             codingCount,
-            difficulty: { easy: easyCount, medium: mediumCount, hard: hardCount },
-            topTopics: topicStats,
+            totalCount: mcqCount + codingCount,
+            difficulty: {
+                easy: diffMap.easy || 0,
+                medium: diffMap.medium || 0,
+                hard: diffMap.hard || 0
+            },
+            topTopics: result.topTopics,
             recentActivity: recentQuestions,
-            smeStats: smeStats
+            smeStats: result.smeStats,
+            smeCount
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
+
 
 app.post('/api/questions/bulk', async (req, res) => {
     try {
