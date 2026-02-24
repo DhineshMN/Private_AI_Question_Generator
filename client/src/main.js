@@ -32,6 +32,15 @@ const state = {
   savedQuestions: [], // Cache for admin view
   lastStatsFetch: 0, // Performance: Cache stats
   lastQuestionsFetch: 0, // Performance: Cache question table
+  activeSessionName: null,
+  sessionPendingQuestions: [], // Auto-accumulation array for active sessions
+  mqPagination: {
+    sessionPage: 1,
+    sessionsPerPage: 10, // Global pagination limit
+    groupPages: {},      // Tracks pagination per group: { "groupId": 1 }
+    itemsPerPage: 5      // Limit inner questions per group
+  },
+  collapsedGroups: {},   // Tracks which blocks are collapsed: { "groupId": true }
 };
 
 // =============================================
@@ -352,6 +361,34 @@ function renderAdminPage() {
 
           <div class="generator-container">
             <div class="card card-glass generator-form">
+              <!-- Session Controller -->
+              <div id="session-controller-ui" style="margin-bottom: 24px; padding: 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <label class="form-label" style="margin: 0;">Generation Session</label>
+                  <span id="session-status-badge" class="badge badge-secondary" style="font-size: 0.65rem;">Inactive</span>
+                </div>
+                
+                <div id="session-inactive-view">
+                  <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4;">
+                    Start a session to group generated questions together (e.g., "Midterm Prep").
+                  </p>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" class="form-input" id="session-name-input" placeholder="e.g. React Patterns..." style="flex: 1;" />
+                    <button class="btn btn-primary btn-sm" id="start-session-btn" style="white-space: nowrap;">▶ Start</button>
+                  </div>
+                </div>
+
+                <div id="session-active-view" style="display: none;">
+                  <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                    <div style="flex: 1;">
+                      <div id="active-session-name-display" style="font-weight: 600; color: var(--primary-light); font-size: 1.1rem; margin-bottom: 4px;">Session Name</div>
+                      <div id="active-session-id-display" style="font-family: monospace; font-size: 0.7rem; opacity: 0.5;">ID: ...</div>
+                    </div>
+                  </div>
+                  <button class="btn btn-danger btn-sm w-full" id="end-session-btn">⏹ End Session</button>
+                </div>
+              </div>
+
               <div class="form-group">
                 <label class="form-label">Question Type</label>
                 <div class="type-segmented-control" id="gen-type-toggle">
@@ -398,9 +435,15 @@ function renderAdminPage() {
                 </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Authorized SME Name</label>
-                <input type="text" class="form-input" id="gen-sme" placeholder="Enter your name (e.g. Dr. Smith)...">
+              <!-- Active SME Watermark Box -->
+              <div style="margin: 20px 0; padding: 16px; background: rgba(15, 23, 42, 0.4); border: 1px dashed var(--primary-light); border-radius: 8px; text-align: center;">
+                <label class="form-label" style="font-size: 0.70rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">ACTIVE SME WATERMARK</label>
+                <div id="active-sme-watermark-display" style="font-weight: 600; font-size: 1.1rem; color: var(--danger-light); margin-bottom: 8px;">
+                  ❌ No SME Selected
+                </div>
+                <p id="active-sme-watermark-hint" style="font-size: 0.75rem; color: var(--text-secondary); margin: 0;">
+                  Select SME in Settings to apply watermark
+                </p>
               </div>
 
               <button class="btn btn-primary btn-lg w-full" id="generate-questions-btn" style="margin-top: 8px;">
@@ -427,20 +470,96 @@ function renderAdminPage() {
           </div>
         </div>
 
-        <!-- Questions Tab (Placeholder) -->
+        <!-- Questions Tab -->
         <div id="tab-questions" class="admin-tab">
-           <header class="admin-header">
-            <h2 class="admin-title">Manage Questions</h2>
+          <header class="admin-header">
+            <div>
+               <h2 class="admin-title">Manage Questions</h2>
+               <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Search, filter, export, and manage generated sessions</p>
+            </div>
             <div style="display: flex; gap: 10px;">
-                <button class="btn btn-secondary btn-sm" id="refresh-questions-btn">🔄 Refresh Path</button>
+                <button class="btn btn-primary btn-sm" id="export-selected-btn" disabled>📦 Export Selected</button>
+                <button class="btn btn-secondary btn-sm" id="refresh-questions-btn">🔄 Refresh Data</button>
             </div>
           </header>
-          <div class="card card-glass questions-list-card">
-            <div id="questions-table-container">
-                <div style="padding: 40px; text-align: center;">
-                    <span class="spinner"></span>
-                    <p style="margin-top: 15px; opacity: 0.7;">Fetching questions from MongoDB...</p>
+
+          <div style="display: flex; gap: 24px; align-items: flex-start;">
+            <!-- Filter Sidebar -->
+            <div class="card card-glass" style="width: 280px; flex-shrink: 0; padding: 20px;">
+              <div style="font-weight: 600; font-size: 1rem; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 12px; display: flex; justify-content: space-between;">
+                <span>Filters</span>
+                <button id="clear-filters-btn" style="background: transparent; border: none; font-size: 0.75rem; color: var(--primary-light); cursor: pointer; text-decoration: underline;">Clear All</button>
+              </div>
+
+              <!-- Filter FormGroup Template -->
+              <style>
+                .filter-group { margin-bottom: 16px; }
+                .filter-label { font-size: 0.70rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; display: block; letter-spacing: 0.5px; }
+                .filter-input { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; outline: none; }
+                .filter-input:focus { border-color: var(--primary); }
+              </style>
+
+              <div class="filter-group">
+                <label class="filter-label">Session</label>
+                <div class="custom-dropdown-container" id="container-filter-session">
+                  <input type="text" class="filter-input custom-dropdown-input" id="filter-session" placeholder="All Sessions" autocomplete="off" data-value="">
+                  <div class="custom-dropdown-list" id="list-filter-session"></div>
                 </div>
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">SME</label>
+                <div class="custom-dropdown-container" id="container-filter-sme">
+                  <input type="text" class="filter-input custom-dropdown-input" id="filter-sme" placeholder="All SMEs" autocomplete="off" data-value="">
+                  <div class="custom-dropdown-list" id="list-filter-sme"></div>
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">Question Type</label>
+                <div class="custom-dropdown-container" id="container-filter-type">
+                  <input type="text" class="filter-input custom-dropdown-input readonly-mode" id="filter-type" placeholder="All Types" autocomplete="off" data-value="" readonly>
+                  <div class="custom-dropdown-list" id="list-filter-type"></div>
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">Subject Category</label>
+                <div class="custom-dropdown-container" id="container-filter-category">
+                  <input type="text" class="filter-input custom-dropdown-input readonly-mode" id="filter-category" placeholder="All Categories" autocomplete="off" data-value="" readonly>
+                  <div class="custom-dropdown-list" id="list-filter-category"></div>
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">Topic / Keyword</label>
+                <input type="text" class="filter-input" id="filter-topic" placeholder="Search topics...">
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">Difficulty</label>
+                <div class="custom-dropdown-container" id="container-filter-difficulty">
+                  <input type="text" class="filter-input custom-dropdown-input readonly-mode" id="filter-difficulty" placeholder="All Difficulties" autocomplete="off" data-value="" readonly>
+                  <div class="custom-dropdown-list" id="list-filter-difficulty"></div>
+                </div>
+              </div>
+
+              <div class="filter-group">
+                <label class="filter-label">Date Range</label>
+                <input type="date" class="filter-input" id="filter-date-start" style="margin-bottom: 8px; color: var(--text-secondary);" title="Start Date">
+                <input type="date" class="filter-input" id="filter-date-end" style="color: var(--text-secondary);" title="End Date">
+              </div>
+
+            </div>
+
+            <!-- Content Area -->
+            <div class="card card-glass questions-list-card" style="flex: 1; padding: 0;">
+              <div id="questions-table-container">
+                  <div style="padding: 40px; text-align: center;">
+                      <span class="spinner"></span>
+                      <p style="margin-top: 15px; opacity: 0.7;">Fetching and grouping questions...</p>
+                  </div>
+              </div>
             </div>
           </div>
         </div>
@@ -448,32 +567,61 @@ function renderAdminPage() {
         <!-- Settings Tab -->
         <div id="tab-settings" class="admin-tab">
            <header class="admin-header">
-            <h2 class="admin-title">Admin Settings</h2>
+            <h2 class="admin-title">SME & API Configurations</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 5px;">Manage multiple SME profiles and their associated API keys</p>
           </header>
-          <div class="card card-glass" style="max-width: 600px;">
-            <div class="form-group">
-              <label class="form-label">Groq API Key</label>
-              <div style="display: flex; gap: 10px;">
-                <input type="password" class="form-input" id="groq-api-key" placeholder="gsk_..." value="${state.groqKey}" style="flex: 1;">
-                <button class="btn btn-primary btn-sm" id="save-settings-btn">Save</button>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; margin-top: 20px;">
+            <!-- Register SME Card -->
+            <div class="card card-glass">
+              <h3 style="display: flex; align-items: center; gap: 8px; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px;">
+                📝 Register SME Profile
+              </h3>
+              
+              <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">SME Full Name</label>
+                <input type="text" class="form-input" id="sme-name-input" placeholder="e.g. John Doe ...">
               </div>
-              <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px;">
-                Get your free API key at <a href="https://console.groq.com/keys" target="_blank" style="color: var(--primary-light); text-decoration: underline;">Groq Console</a>.
-              </p>
+
+              <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Groq API Key</label>
+                <input type="password" class="form-input" id="sme-key-input" placeholder="gsk_...">
+              </div>
+
+              <div class="form-group" style="margin-bottom: 25px;">
+                <label class="form-label" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Preferred AI Model</label>
+                <select class="form-select" id="sme-model-input" style="width: 100%;">
+                  <option value="llama-3.3-70b-versatile">Llama 3.3 70B (SOTA / Versatile)</option>
+                  <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fast / Lightweight)</option>
+                  <option value="mixtral-8x7b-32768" selected>Mixtral 8x7B (Deep Context)</option>
+                </select>
+              </div>
+
+              <button class="btn btn-primary" id="add-sme-btn" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                ✨ Add SME Profile
+              </button>
             </div>
-            <div class="form-group" style="margin-top: 24px;">
-              <label class="form-label">AI Model</label>
-              <select class="form-select" id="groq-model-select" style="width: 100%;">
-                <option value="llama-3.3-70b-versatile" ${state.groqModel === 'llama-3.3-70b-versatile' ? 'selected' : ''}>Llama 3.3 70B (SOTA / Versatile)</option>
-                <option value="llama-3.1-8b-instant" ${state.groqModel === 'llama-3.1-8b-instant' ? 'selected' : ''}>Llama 3.1 8B (Fast / Lightweight)</option>
-                <option value="mixtral-8x7b-32768" ${state.groqModel === 'mixtral-8x7b-32768' ? 'selected' : ''}>Mixtral 8x7B (High Context)</option>
-              </select>
+
+            <!-- Managed SME Profiles Card -->
+            <div class="card card-glass" style="min-height: 380px;">
+              <h3 style="display: flex; align-items: center; gap: 8px; font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px;">
+                🕵️ Managed SME Profiles
+              </h3>
+              
+              <div id="sme-list-container" style="display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto; padding-right: 5px;">
+                <div style="text-align: center; opacity: 0.5; padding: 40px 0; font-size: 0.9rem;">
+                  <span class="spinner-sm" style="border-width: 2px;"></span> Loading profiles...
+                </div>
+              </div>
             </div>
-            <div style="margin-top: 30px; padding: 15px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; border-left: 4px solid var(--primary);">
-              <p style="font-size: 0.85rem; line-height: 1.5;">
-                <strong>💡 Note:</strong> Your API key is stored locally in your browser and is only used to make requests to Groq. 
-              </p>
-            </div>
+          </div>
+
+          <!-- Privacy Notice Box -->
+          <div style="margin-top: 24px; padding: 18px 24px; background: rgba(15, 23, 42, 0.4); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); display: flex; gap: 16px; align-items: flex-start;">
+            <div style="font-size: 1.5rem; line-height: 1;">🔑</div>
+            <p style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); margin: 0;">
+              <strong style="color: var(--text);">Data Privacy & Security:</strong> All API keys are stored in your private MongoDB instance. When generating questions, the selected SME's key is used to authenticate requests. Each generated question is automatically <strong>watermarked</strong> with the SME's name and a <strong>timestamp</strong>.
+            </p>
           </div>
         </div>
       </main>
@@ -861,7 +1009,11 @@ function attachAdminListeners() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              questions: state.lastGenerated,
+              questions: state.lastGenerated.map(q => ({
+                ...q,
+                sessionId: state.activeSessionId || null,
+                sessionName: state.activeSessionName || null
+              })),
               type: state.lastGeneratedType
             })
           });
@@ -874,13 +1026,120 @@ function attachAdminListeners() {
           const data = await response.json();
           showToast('success', data.message);
           saveBtn.innerHTML = `✅ Saved to Database`;
+          saveBtn.classList.remove('btn-primary');
+          saveBtn.classList.add('btn-success');
+
+          // Force UI to sync immediately on next view
+          state.lastQuestionsFetch = 0;
+          state.savedQuestions = [];
+
           updateDashboardStats();
         } catch (error) {
           console.error(error);
           showToast('error', 'Database Save Failed: ' + error.message);
           saveBtn.disabled = false;
           saveBtn.innerHTML = `💾 Save to Database`;
+          saveBtn.classList.remove('btn-success');
+          saveBtn.classList.add('btn-primary');
         }
+      }
+    });
+  }
+
+  // Session Controller Handlers
+  const startSessionBtn = document.getElementById('start-session-btn');
+  const endSessionBtn = document.getElementById('end-session-btn');
+  const sessionNameInput = document.getElementById('session-name-input');
+  const sessionInactiveView = document.getElementById('session-inactive-view');
+  const sessionActiveView = document.getElementById('session-active-view');
+  const activeSessionNameDisplay = document.getElementById('active-session-name-display');
+  const activeSessionIdDisplay = document.getElementById('active-session-id-display');
+  const statusBadge = document.getElementById('session-status-badge');
+
+  if (startSessionBtn) {
+    startSessionBtn.addEventListener('click', () => {
+      const name = sessionNameInput.value.trim();
+      if (!name) {
+        showToast('error', 'Please enter a Session Name');
+        return;
+      }
+      state.activeSessionId = 'SESSION_' + crypto.randomUUID().split('-')[0].toUpperCase();
+      state.activeSessionName = name;
+      state.sessionPendingQuestions = []; // Reset pending questions for new session
+
+      sessionInactiveView.style.display = 'none';
+      sessionActiveView.style.display = 'block';
+      activeSessionNameDisplay.textContent = name;
+      activeSessionIdDisplay.textContent = `ID: ${state.activeSessionId}`;
+
+      statusBadge.textContent = 'Active';
+      statusBadge.className = 'badge badge-success';
+      showToast('success', `Started new session: ${name}`);
+
+      // Re-render preview to toggle the Save button to Auto-Save badge
+      renderGeneratedPreview(state.lastGenerated || [], state.lastGeneratedType || 'mcq');
+    });
+  }
+
+  if (endSessionBtn) {
+    endSessionBtn.addEventListener('click', async () => {
+      if (confirm('End this generation session? This will auto-save all generated questions.')) {
+
+        // Auto-Save Accumulated Questions if any exist
+        if (state.sessionPendingQuestions && state.sessionPendingQuestions.length > 0) {
+          endSessionBtn.disabled = true;
+          endSessionBtn.innerHTML = `<span class="spinner-sm"></span> Saving...`;
+
+          try {
+            const response = await fetch('/api/questions/bulk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                questions: state.sessionPendingQuestions,
+                type: null // Let the backend fallback infer the type
+              })
+            });
+
+            if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || 'Failed to save session data');
+            }
+
+            const data = await response.json();
+            showToast('success', `Session Ended: Auto-saved ${state.sessionPendingQuestions.length} questions.`);
+
+            // Invalidate cache for Manage Questions
+            state.lastQuestionsFetch = 0;
+            state.savedQuestions = [];
+            updateDashboardStats();
+
+          } catch (error) {
+            console.error(error);
+            showToast('error', 'Session Auto-Save Failed: ' + error.message);
+          } finally {
+            endSessionBtn.disabled = false;
+            endSessionBtn.innerHTML = `⏹ End Session`;
+          }
+        } else {
+          showToast('info', 'Session ended. No questions were generated.');
+        }
+
+        // Reset session state
+        state.activeSessionId = null;
+        state.activeSessionName = null;
+        state.sessionPendingQuestions = [];
+        sessionNameInput.value = '';
+
+        sessionInactiveView.style.display = 'block';
+        sessionActiveView.style.display = 'none';
+
+        statusBadge.textContent = 'Inactive';
+        statusBadge.className = 'badge badge-secondary';
+
+        // Clear the preview and re-render to show empty state
+        state.lastGenerated = [];
+        state.lastGeneratedType = 'mcq';
+        renderGeneratedPreview([], 'mcq');
       }
     });
   }
@@ -901,9 +1160,19 @@ function attachAdminListeners() {
       const cat = catSelect.value;
       const options = subtopics[cat] || [];
       subSelect.innerHTML = options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+      renderGeneratedPreview([], 'mcq'); // Clear preview on change
     };
 
     catSelect.addEventListener('change', updateSubtopics);
+    subSelect.addEventListener('change', () => renderGeneratedPreview([], 'mcq'));
+
+    // Also clear on other input changes
+    const inputsToWatch = ['gen-topic', 'gen-difficulty', 'gen-count', 'gen-sme'];
+    inputsToWatch.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => renderGeneratedPreview([], 'mcq'));
+    });
+
     updateSubtopics(); // Init
   }
 
@@ -914,55 +1183,291 @@ function attachAdminListeners() {
       seg.addEventListener('click', () => {
         typeSegments.forEach(s => s.classList.remove('active'));
         seg.classList.add('active');
+        renderGeneratedPreview([], 'mcq'); // Clear preview on change
       });
     });
   }
 
-  // Settings listeners
-  const saveSettingsBtn = document.getElementById('save-settings-btn');
-  if (saveSettingsBtn) {
-    saveSettingsBtn.addEventListener('click', async () => {
-      const key = document.getElementById('groq-api-key').value.trim();
-      const model = document.getElementById('groq-model-select').value;
+  // =============================================
+  // SME PROFILE MANAGEMENT
+  // =============================================
+  state.smes = [];
+  state.activeSme = null;
 
-      state.groqKey = key;
-      state.groqModel = model;
+  const loadSMEs = async () => {
+    try {
+      const response = await fetch('/api/smes');
+      if (!response.ok) throw new Error();
+      state.smes = await response.json();
 
-      localStorage.setItem('groq_key', key);
-      localStorage.setItem('groq_model', model);
+      // If there are SMEs but no active one selected, or active one was deleted
+      if (state.smes.length > 0 && (!state.activeSme || !state.smes.find(s => s._id === state.activeSme._id))) {
+        // Auto-select the first one if possible
+        state.activeSme = state.smes[0];
+      } else if (state.smes.length === 0) {
+        state.activeSme = null;
+      }
 
-      saveSettingsBtn.disabled = true;
-      saveSettingsBtn.innerHTML = '💾 Saving...';
+      renderSMEs();
+      updateGeneratorWatermark();
+    } catch (err) {
+      console.error('Failed to load SMEs', err);
+      document.getElementById('sme-list-container').innerHTML = `
+        <div style="text-align: center; opacity: 0.5; padding: 40px 0; font-size: 0.9rem; color: var(--danger-light);">
+          Failed to load SME Profiles. Ensure backend is running.
+        </div>
+      `;
+    }
+  };
 
-      try {
-        // Also save to server for permanent persistence
-        const response = await fetch('/api/settings/save-key', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey: key, model: model })
+  const renderSMEs = () => {
+    const container = document.getElementById('sme-list-container');
+    if (!container) return;
+
+    if (state.smes.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; opacity: 0.5; padding: 40px 0; font-size: 0.9rem;">
+          No SME profiles found. Add one to get started!
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = state.smes.map(sme => {
+      const isActive = state.activeSme && state.activeSme._id === sme._id;
+      return `
+        <div class="sme-profile-card" data-id="${sme._id}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid ${isActive ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; border-radius: 8px; cursor: pointer; transition: 0.2s; box-shadow: ${isActive ? '0 0 0 1px var(--primary)' : 'none'};">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem;">
+              ${sme.name.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div style="font-weight: 600; font-size: 0.9rem; color: ${isActive ? 'var(--primary-light)' : 'inherit'}; display: flex; align-items: center; gap: 8px;">
+                <input type="text" class="sme-inline-name-input" data-id="${sme._id}" value="${sme.name}" readonly style="background: transparent; border: 1px solid transparent; border-radius: 4px; color: inherit; font-family: inherit; font-weight: inherit; font-size: inherit; outline: none; cursor: pointer; padding: 2px 4px; width: 140px; transition: 0.2s; margin-left: -4px;" title="Click to edit name" />
+                ${isActive ? '<span class="badge badge-success" style="font-size: 0.6rem; padding: 2px 6px;">Active</span>' : ''}
+              </div>
+              <div style="font-size: 0.75rem; opacity: 0.8; display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                <select class="sme-inline-model-select" data-id="${sme._id}" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 2px 4px; font-size: 0.7rem; cursor: pointer; outline: none;">
+                  <option value="llama-3.3-70b-versatile" ${sme.model === 'llama-3.3-70b-versatile' ? 'selected' : ''}>Llama 3.3 70B</option>
+                  <option value="llama-3.1-8b-instant" ${sme.model === 'llama-3.1-8b-instant' ? 'selected' : ''}>Llama 3.1 8B</option>
+                  <option value="mixtral-8x7b-32768" ${sme.model === 'mixtral-8x7b-32768' ? 'selected' : ''}>Mixtral 8x7B</option>
+                </select>
+                <span style="opacity: 0.6;">•</span>
+                <input type="password" class="sme-inline-key-input" data-id="${sme._id}" value="${sme.apiKey}" readonly style="background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--text-secondary); width: 85px; font-size: 0.7rem; outline: none; padding: 2px 4px; cursor: pointer; transition: 0.2s;" title="Click to edit API Key" />
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-sm delete-sme-btn" data-id="${sme._id}" style="background: transparent; color: var(--text-secondary); padding: 4px; opacity: 0.6; cursor: pointer; transition: 0.2s; font-size: 1rem; border: none;" onmouseover="this.style.opacity='1'; this.style.color='var(--danger-light)'" onmouseout="this.style.opacity='0.6'; this.style.color='var(--text-secondary)'">
+            🗑️
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    // Attach Selection Listeners
+    container.querySelectorAll('.sme-profile-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.delete-sme-btn') || e.target.closest('.sme-inline-model-select') || e.target.closest('input')) return; // Ignore if interacting with editable areas
+        const id = card.dataset.id;
+        state.activeSme = state.smes.find(s => s._id === id);
+        renderSMEs(); // Re-render to update active styling
+        updateGeneratorWatermark(); // Update watermark
+      });
+    });
+
+    // Attach Inline Model Update Listeners
+    container.querySelectorAll('.sme-inline-model-select').forEach(select => {
+      select.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const id = select.dataset.id;
+        const newModel = select.value;
+
+        // Optimistically update state
+        const sme = state.smes.find(s => s._id === id);
+        if (sme) sme.model = newModel;
+        if (state.activeSme && state.activeSme._id === id) {
+          state.activeSme.model = newModel;
+          updateGeneratorWatermark();
+        }
+
+        try {
+          const res = await fetch(`/api/smes/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: newModel })
+          });
+          if (!res.ok) throw new Error();
+          showToast('success', 'Model preference updated!');
+        } catch (err) {
+          console.error(err);
+          showToast('error', 'Failed to update model.');
+          loadSMEs(); // Revert on fail
+        }
+      });
+    });
+
+    // Setup Inline Editable Inputs (Name & API Key)
+    const setupInlineEdit = (selector, fieldName, isPassword) => {
+      container.querySelectorAll(selector).forEach(input => {
+        input.addEventListener('click', (e) => {
+          e.stopPropagation();
+          input.removeAttribute('readonly');
+          if (isPassword) input.type = 'text';
+          input.style.border = '1px solid var(--primary)';
+          input.style.background = 'rgba(0,0,0,0.3)';
+          input.focus();
         });
 
-        if (response.ok) {
-          showToast('success', 'Settings saved to System & Browser!');
-        } else {
-          showToast('warning', 'Saved to Browser, but Server sync failed.');
+        const saveEdit = async () => {
+          input.setAttribute('readonly', 'true');
+          if (isPassword) input.type = 'password';
+          input.style.border = '1px solid transparent';
+          input.style.background = 'transparent';
+
+          const id = input.dataset.id;
+          const newValue = input.value.trim();
+          const sme = state.smes.find(s => s._id === id);
+
+          if (!newValue || sme[fieldName] === newValue) {
+            input.value = sme[fieldName]; // Revert if empty or unchanged
+            return;
+          }
+
+          // Optimistic update
+          sme[fieldName] = newValue;
+          if (state.activeSme && state.activeSme._id === id) {
+            state.activeSme[fieldName] = newValue;
+            updateGeneratorWatermark();
+          }
+
+          try {
+            const res = await fetch(`/api/smes/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ [fieldName]: newValue })
+            });
+            if (!res.ok) throw new Error();
+            showToast('success', `${fieldName === 'apiKey' ? 'API Key' : 'Name'} updated!`);
+          } catch (err) {
+            console.error(err);
+            showToast('error', 'Update failed.');
+            loadSMEs();
+          }
+        };
+
+        input.addEventListener('blur', saveEdit);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            input.blur();
+          }
+        });
+      });
+    };
+
+    setupInlineEdit('.sme-inline-key-input', 'apiKey', true);
+    setupInlineEdit('.sme-inline-name-input', 'name', false);
+
+    // Attach Deletion Listeners
+    container.querySelectorAll('.delete-sme-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+
+        if (confirm('Are you sure you want to delete this SME Profile?')) {
+          btn.style.opacity = '0.5';
+          try {
+            const res = await fetch(`/api/smes/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+            showToast('success', 'SME Profile deleted.');
+            loadSMEs(); // Reload list
+          } catch (err) {
+            console.error(err);
+            showToast('error', 'Failed to delete SME Profile.');
+            btn.style.opacity = '1';
+          }
         }
+      });
+    });
+  };
+
+  // Add SME Listener
+  const addSmeBtn = document.getElementById('add-sme-btn');
+  if (addSmeBtn) {
+    addSmeBtn.addEventListener('click', async () => {
+      const name = document.getElementById('sme-name-input').value.trim();
+      const apiKey = document.getElementById('sme-key-input').value.trim();
+      const model = document.getElementById('sme-model-input').value;
+
+      if (!name || !apiKey) {
+        showToast('warning', 'Name and API Key are required.');
+        return;
+      }
+
+      addSmeBtn.disabled = true;
+      addSmeBtn.innerHTML = '<span class="spinner-sm"></span> Adding...';
+
+      try {
+        const response = await fetch('/api/smes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, apiKey, model })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to add SME');
+        }
+
+        showToast('success', 'SME Profile Registered & Saved to System!');
+
+        // Clear inputs
+        document.getElementById('sme-name-input').value = '';
+        document.getElementById('sme-key-input').value = '';
+
+        await loadSMEs(); // Re-fetch list
       } catch (err) {
-        console.error('Server sync failed', err);
-        showToast('warning', 'Saved to Browser only (Server offline?)');
+        console.error(err);
+        showToast('error', err.message);
       } finally {
-        saveSettingsBtn.disabled = false;
-        saveSettingsBtn.innerHTML = 'Save';
+        addSmeBtn.disabled = false;
+        addSmeBtn.innerHTML = '✨ Add SME Profile';
       }
     });
+  }
+
+  // Load SMEs initially when listeners attach
+  loadSMEs();
+
+  // Make loadSMEs available globally for switching tabs if needed
+  window.loadSMEs = loadSMEs;
+}
+
+function updateGeneratorWatermark() {
+  const display = document.getElementById('active-sme-watermark-display');
+  const hint = document.getElementById('active-sme-watermark-hint');
+
+  if (!display || !hint) return;
+
+  if (state.activeSme) {
+    const modelNames = {
+      'llama-3.3-70b-versatile': 'Llama 3.3 70B',
+      'llama-3.1-8b-instant': 'Llama 3.1 8B',
+      'mixtral-8x7b-32768': 'Mixtral 8x7B'
+    };
+    display.innerHTML = `🛡️ ${state.activeSme.name}`;
+    display.style.color = 'var(--primary-light)';
+    hint.innerHTML = `Using ${modelNames[state.activeSme.model] || state.activeSme.model}`;
+  } else {
+    display.innerHTML = `❌ No SME Selected`;
+    display.style.color = 'var(--danger-light)';
+    hint.innerHTML = `Select SME in Settings to apply watermark`;
   }
 }
 
 async function handleGenerateClick() {
-  // Check if key is in state OR if we should try to use server-side proxy (future feature)
-  // For now, we still need the key in the frontend state for the direct API calls
-  if (!state.groqKey) {
-    showToast('error', 'Groq API Key missing! Please add it in Settings.');
+  if (!state.activeSme) {
+    showToast('error', 'No ACTIVE SME Selected! Please register and select one in Settings.');
     const settingsTab = document.querySelector('[data-tab="settings"]');
     if (settingsTab) settingsTab.click();
     return;
@@ -975,7 +1480,8 @@ async function handleGenerateClick() {
   const type = activeSegment ? activeSegment.dataset.value : 'mcq';
   const difficulty = document.getElementById('gen-difficulty').value;
   const count = parseInt(document.getElementById('gen-count').value);
-  const smeName = document.getElementById('gen-sme').value || 'System Default';
+  // Use the active SME's name for the watermark
+  const smeName = state.activeSme.name;
 
   const finalTopic = specificTopic ? `${subtopic} (${specificTopic})` : subtopic;
 
@@ -992,13 +1498,32 @@ async function handleGenerateClick() {
     </div>
   `;
 
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `💾 Save to Database`;
+    saveBtn.classList.remove('btn-success');
+    saveBtn.classList.add('btn-primary');
+  }
+
   try {
-    const generated = await generateAIQuestions(finalTopic, type, difficulty, count, category, subtopic, smeName);
+    const generated = await generateAIQuestions(finalTopic, type, difficulty, count, category, subtopic, smeName, state.activeSme.apiKey, state.activeSme.model);
     state.lastGenerated = generated;
     state.lastGeneratedType = type;
 
+    // Auto-accumulate if session is active
+    if (state.activeSessionId) {
+      const questionsWithSession = generated.map(q => ({
+        ...q,
+        sessionId: state.activeSessionId,
+        sessionName: state.activeSessionName
+      }));
+      state.sessionPendingQuestions = [...(state.sessionPendingQuestions || []), ...questionsWithSession];
+      showToast('success', `AI generated ${count} questions and auto-added to session memory!`);
+    } else {
+      showToast('success', `AI generated ${count} questions successfully!`);
+    }
+
     renderGeneratedPreview(generated, type);
-    showToast('success', `AI generated ${count} questions successfully!`);
   } catch (error) {
     console.error(error);
     showToast('error', 'AI Generation Failed: ' + error.message);
@@ -1011,7 +1536,12 @@ async function handleGenerateClick() {
   } finally {
     genBtn.disabled = false;
     genBtn.innerHTML = `✨ Generate Questions`;
-    saveBtn.disabled = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `💾 Save to Database`;
+      saveBtn.classList.remove('btn-success');
+      saveBtn.classList.add('btn-primary');
+    }
   }
 }
 
@@ -1437,8 +1967,35 @@ function renderGeneratedPreview(questions, type) {
       </div>
     `;
     const saveBtn = document.getElementById('save-generated-btn');
-    if (saveBtn) saveBtn.disabled = true;
+    if (saveBtn) {
+      if (state.activeSessionId) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `⏳ Auto-Saving on End Session`;
+        saveBtn.classList.remove('btn-primary', 'btn-success');
+        saveBtn.classList.add('btn-secondary');
+      } else {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `💾 Save to Database`;
+        saveBtn.classList.remove('btn-success', 'btn-secondary');
+        saveBtn.classList.add('btn-primary');
+      }
+    }
     return;
+  }
+
+  const saveBtn = document.getElementById('save-generated-btn');
+  if (saveBtn) {
+    if (state.activeSessionId) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `⏳ Auto-Saving on End Session (${state.sessionPendingQuestions ? state.sessionPendingQuestions.length : 0} items pending)`;
+      saveBtn.classList.remove('btn-primary', 'btn-success');
+      saveBtn.classList.add('btn-secondary');
+    } else {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = `💾 Save to Database`;
+      saveBtn.classList.remove('btn-success', 'btn-secondary');
+      saveBtn.classList.add('btn-primary');
+    }
   }
 
   container.innerHTML = `
@@ -1513,7 +2070,14 @@ function renderGeneratedPreview(questions, type) {
   container.querySelectorAll('.delete-gen-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.target.closest('.delete-gen-btn').dataset.index);
+      const qToRemove = state.lastGenerated[idx];
       state.lastGenerated.splice(idx, 1);
+
+      // Also remove from pending session memory if it exists
+      if (state.sessionPendingQuestions && qToRemove) {
+        state.sessionPendingQuestions = state.sessionPendingQuestions.filter(q => q.id !== qToRemove.id);
+      }
+
       renderGeneratedPreview(state.lastGenerated, state.lastGeneratedType);
       showToast('info', 'Question removed from preview');
     });
@@ -1526,7 +2090,15 @@ function renderGeneratedPreview(questions, type) {
         .map(check => parseInt(check.dataset.index))
         .sort((a, b) => b - a); // Sort descending
 
+      const idsToRemove = checkedIndices.map(idx => state.lastGenerated[idx]?.id);
+
       checkedIndices.forEach(idx => state.lastGenerated.splice(idx, 1));
+
+      // Remove from session pending questions 
+      if (state.sessionPendingQuestions && idsToRemove.length > 0) {
+        state.sessionPendingQuestions = state.sessionPendingQuestions.filter(q => !idsToRemove.includes(q.id));
+      }
+
       renderGeneratedPreview(state.lastGenerated, state.lastGeneratedType);
       showToast('success', `Deleted ${checkedIndices.length} questions`);
     });
@@ -1886,53 +2458,81 @@ async function downloadAsZip(q) {
   }
 
   const zip = new JSZip();
-  const folderName = (q.title || q.subtopic || 'coding_project').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  const folder = zip.folder(folderName);
+  const topFolderName = (q.title || q.subtopic || 'coding_export').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const topFolder = zip.folder(topFolderName);
 
-  // 1. README.md
-  let readme = `# ${q.title || q.subtopic}\n\n`;
-  readme += `## Challenge Description\n${q.description || ''}\n\n`;
-  readme += `### Input Format\n${q.input || 'N/A'}\n\n`;
-  readme += `### Output Format\n${q.output || 'N/A'}\n\n`;
+  // Helper to generate a single question's folder contents
+  const generateQuestionFolder = (folder, question, index) => {
+    // 1. README.md
+    let readme = `# ${question.title || question.subtopic || 'Question ' + index}\n\n`;
 
-  if (q.constraints && q.constraints.length) {
-    readme += `### Constraints\n`;
-    q.constraints.forEach(c => readme += `- ${c}\n`);
-    readme += `\n`;
-  }
+    if (question.type === 'mcq') {
+      readme += `## Question\n${question.question}\n\n`;
+      if (question.options) {
+        question.options.forEach((opt, i) => {
+          const marker = i === question.correct ? '✅' : '⬜';
+          readme += `${marker} **${String.fromCharCode(65 + i)}.** ${opt}\n`;
+        });
+      }
+      if (question.explanation) readme += `\n> **Explanation:** ${question.explanation}\n`;
+    } else {
+      readme += `## Challenge Description\n${question.description || ''}\n\n`;
+      readme += `### Input Format\n${question.input || 'N/A'}\n\n`;
+      readme += `### Output Format\n${question.output || 'N/A'}\n\n`;
 
-  if (q.hints && q.hints.length) {
-    readme += `### Hints\n`;
-    q.hints.forEach((h, i) => readme += `${i + 1}. ${h}\n`);
-    readme += `\n`;
-  }
+      if (question.constraints && question.constraints.length) {
+        readme += `### Constraints\n`;
+        question.constraints.forEach(c => readme += `- ${c}\n`);
+        readme += `\n`;
+      }
 
-  folder.file("README.md", readme);
+      if (question.hints && question.hints.length) {
+        readme += `### Hints\n`;
+        question.hints.forEach((h, i) => readme += `${i + 1}. ${h}\n`);
+        readme += `\n`;
+      }
+    }
+    folder.file("README.md", readme);
 
-  // 2. Sample Data / Examples
-  if (q.examples && q.examples.length) {
-    let exMd = `# Examples\n\n`;
-    q.examples.forEach((ex, i) => {
-      exMd += `### Example ${i + 1}\n**Input:** \`${ex.input}\`  \n**Output:** \`${ex.output}\`  \n**Explanation:** ${ex.explanation || 'N/A'}\n\n`;
-    });
-    folder.file("EXAMPLES.md", exMd);
-  }
+    // 2. Sample Data / Examples (Coding Only)
+    if (question.type !== 'mcq' && question.examples && question.examples.length) {
+      let exMd = `# Examples\n\n`;
+      question.examples.forEach((ex, i) => {
+        exMd += `### Example ${i + 1}\n**Input:** \`${ex.input}\`  \n**Output:** \`${ex.output}\`  \n**Explanation:** ${ex.explanation || 'N/A'}\n\n`;
+      });
+      folder.file("EXAMPLES.md", exMd);
+    }
 
-  // 3. Starter Code
-  if (typeof q.starterCode === 'object') {
-    // Multi-file project
-    Object.entries(q.starterCode).forEach(([filename, code]) => {
-      folder.file(filename, code);
+    // 3. Starter Code (Coding Only)
+    if (question.type !== 'mcq' && question.starterCode) {
+      if (typeof question.starterCode === 'object') {
+        // Multi-file project
+        Object.entries(question.starterCode).forEach(([filename, code]) => {
+          folder.file(filename, code);
+        });
+      } else {
+        // Single file
+        const extMap = { python: 'py', javascript: 'js', java: 'java', cpp: 'cpp', sql: 'sql', php: 'php', c: 'c' };
+        const topic = (question.subtopic || '').toLowerCase();
+        let ext = 'txt';
+        for (const [key, val] of Object.entries(extMap)) {
+          if (topic.includes(key)) { ext = val; break; }
+        }
+        folder.file(`solution.${ext}`, question.starterCode || '');
+      }
+    }
+  };
+
+  if (q.exportedQuestions && Array.isArray(q.exportedQuestions)) {
+    // Bulk Export Mode
+    q.exportedQuestions.forEach((question, idx) => {
+      const subFolderName = `Q${idx + 1}_${(question.title || question.subtopic || 'question').replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+      const subFolder = topFolder.folder(subFolderName);
+      generateQuestionFolder(subFolder, question, idx + 1);
     });
   } else {
-    // Single file
-    const extMap = { python: 'py', javascript: 'js', java: 'java', cpp: 'cpp', sql: 'sql', php: 'php', c: 'c' };
-    const topic = (q.subtopic || '').toLowerCase();
-    let ext = 'txt';
-    for (const [key, val] of Object.entries(extMap)) {
-      if (topic.includes(key)) { ext = val; break; }
-    }
-    folder.file(`solution.${ext}`, q.starterCode || '');
+    // Single Question Mode
+    generateQuestionFolder(topFolder, q, 1);
   }
 
   try {
@@ -1940,7 +2540,7 @@ async function downloadAsZip(q) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${folderName}.zip`;
+    a.download = `${topFolderName}.zip`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('success', 'Project ZIP generated and downloaded!');
@@ -1949,6 +2549,7 @@ async function downloadAsZip(q) {
     console.error(err);
   }
 }
+
 
 
 // =============================================
@@ -2814,76 +3415,580 @@ async function fetchAndRenderSavedQuestions(force = false) {
   const container = document.getElementById('questions-table-container');
   if (!container) return;
 
-  // Efficiency: Cache check (60s cache for the big table)
   const now = Date.now();
   const isStale = now - state.lastQuestionsFetch > 60000;
 
-  if (!isStale && state.savedQuestions.length > 0 && !force) {
-    console.log('📦 Using state-cached questions list');
-    renderQuestionsTable(state.savedQuestions);
-    return;
+  if (isStale || force || state.savedQuestions.length === 0) {
+    container.innerHTML = `
+      <div class="loading-state" style="padding: 100px; text-align: center;">
+          <span class="spinner"></span>
+          <p style="margin-top: 15px;">Syncing question bank...</p>
+      </div>
+    `;
+    try {
+      const response = await fetch('/api/questions');
+      if (!response.ok) throw new Error();
+      state.savedQuestions = await response.json();
+      state.lastQuestionsFetch = now;
+      populateFilterDropdowns(); // Update dynamic dropdowns
+    } catch (error) {
+      console.error(error);
+      container.innerHTML = `<div class="empty-state-v2">Failed to sync with cloud database.</div>`;
+      return;
+    }
   }
 
-  container.innerHTML = `
-    <div class="loading-state" style="padding: 100px;">
-        <span class="spinner"></span>
-        <p style="margin-top: 15px;">Syncing question bank...</p>
-    </div>
-  `;
+  applyFiltersAndRender();
+}
 
-  try {
-    const response = await fetch('/api/questions');
-    if (!response.ok) throw new Error();
+function populateFilterDropdowns() {
+  const sessions = new Map();
+  const smes = new Set();
 
-    const questions = await response.json();
-    state.savedQuestions = questions;
-    state.lastQuestionsFetch = now;
-    renderQuestionsTable(questions);
-  } catch (error) {
-    console.error(error);
-    container.innerHTML = `<div class="empty-state-v2">Failed to sync with cloud database.</div>`;
+  // Collect unique sessions and SMEs (order of insertion preserved)
+  state.savedQuestions.forEach(q => {
+    if (q.smeName) smes.add(q.smeName);
+    if (q.sessionId) sessions.set(q.sessionId, q.sessionName || q.sessionId);
+  });
+
+  const populateDropdown = (inputId, listId, html) => {
+    const list = document.getElementById(listId);
+    if (list) list.innerHTML = html || '<div class="custom-dropdown-empty">No options</div>';
+  };
+
+  // Sessions Logic - Top 5 recent vs Older
+  const sessionsArray = Array.from(sessions.entries()).reverse(); // Newest first
+  const recentSessions = sessionsArray.slice(0, 5);
+  const olderSessions = sessionsArray.slice(5);
+
+  let sessionHtml = '<div class="custom-dropdown-item" data-value="">All Sessions</div>';
+  if (recentSessions.length > 0) {
+    sessionHtml += '<div style="padding: 8px 16px 4px 16px; font-size: 0.7rem; color: var(--primary-light); text-transform: uppercase; font-weight: bold;">Recent Sessions</div>';
+    sessionHtml += recentSessions.map(([id, name]) => `<div class="custom-dropdown-item" data-value="${id}">${name} (${id})</div>`).join('');
   }
+  if (olderSessions.length > 0) {
+    sessionHtml += '<div style="padding: 8px 16px 4px 16px; font-size: 0.7rem; color: var(--primary-light); text-transform: uppercase; font-weight: bold; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px;">Older Sessions</div>';
+    sessionHtml += olderSessions.map(([id, name]) => `<div class="custom-dropdown-item" data-value="${id}">${name} (${id})</div>`).join('');
+  }
+  populateDropdown('filter-session', 'list-filter-session', sessionHtml);
+
+  // SMEs
+  populateDropdown('filter-sme', 'list-filter-sme',
+    '<div class="custom-dropdown-item" data-value="">All SMEs</div>' +
+    Array.from(smes).map(sme => `<div class="custom-dropdown-item" data-value="${sme}">${sme}</div>`).join('')
+  );
+
+  // Type
+  populateDropdown('filter-type', 'list-filter-type', `
+    <div class="custom-dropdown-item" data-value="">All Types</div>
+    <div class="custom-dropdown-item" data-value="mcq">MCQ</div>
+    <div class="custom-dropdown-item" data-value="coding">Coding</div>
+  `);
+
+  // Category
+  populateDropdown('filter-category', 'list-filter-category', `
+    <div class="custom-dropdown-item" data-value="">All Categories</div>
+    <div class="custom-dropdown-item" data-value="languages">Languages</div>
+    <div class="custom-dropdown-item" data-value="subjects">Subjects</div>
+    <div class="custom-dropdown-item" data-value="stacks">Stacks</div>
+    <div class="custom-dropdown-item" data-value="frameworks">Frameworks</div>
+  `);
+
+  // Difficulty
+  populateDropdown('filter-difficulty', 'list-filter-difficulty', `
+    <div class="custom-dropdown-item" data-value="">All Difficulties</div>
+    <div class="custom-dropdown-item" data-value="Easy">Easy</div>
+    <div class="custom-dropdown-item" data-value="Medium">Medium</div>
+    <div class="custom-dropdown-item" data-value="Hard">Hard</div>
+  `);
+}
+
+function attachFilterListeners() {
+  const customDropdowns = ['filter-session', 'filter-sme', 'filter-type', 'filter-category', 'filter-difficulty'];
+
+  customDropdowns.forEach(id => {
+    const input = document.getElementById(id);
+    const list = document.getElementById(`list-${id}`);
+    const container = document.getElementById(`container-${id}`);
+    if (!input || !list || !container) return;
+
+    // Show list
+    input.addEventListener('focus', () => {
+      document.querySelectorAll('.custom-dropdown-list.active').forEach(l => l !== list && l.classList.remove('active'));
+      list.classList.add('active');
+      // Reset filter options
+      list.querySelectorAll('.custom-dropdown-item').forEach(item => item.style.display = 'block');
+      list.querySelectorAll('div[style*="uppercase"]').forEach(el => el.style.display = 'block');
+    });
+
+    // Search logic
+    input.addEventListener('input', (e) => {
+      if (input.classList.contains('readonly-mode')) return;
+      const searchTerm = e.target.value.toLowerCase();
+      input.dataset.value = ''; // Reset value indicating custom typing
+
+      let hasVisible = false;
+      list.querySelectorAll('.custom-dropdown-item').forEach(item => {
+        if (item.dataset.value === '' && searchTerm.length > 0) {
+          // Hide "All ..." options when searching
+          item.style.display = 'none';
+        } else if (item.textContent.toLowerCase().includes(searchTerm)) {
+          item.style.display = 'block';
+          hasVisible = true;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      // Hide headers if searching
+      list.querySelectorAll('div[style*="uppercase"]').forEach(el => {
+        el.style.display = searchTerm.length > 0 ? 'none' : 'block';
+      });
+
+      list.classList.add('active');
+      applyFiltersAndRender();
+    });
+
+    // Handle Selection
+    list.addEventListener('click', (e) => {
+      if (e.target.classList.contains('custom-dropdown-item')) {
+        const val = e.target.dataset.value;
+        const label = e.target.dataset.value === '' ? '' : e.target.textContent;
+        // The placeholder handles the "All Options" text, so if cleared, leave it blank to show placeholder
+        input.value = label;
+        input.dataset.value = val;
+        list.classList.remove('active');
+        applyFiltersAndRender();
+      }
+    });
+
+    // Click outside
+    document.addEventListener('click', (e) => {
+      if (!container.contains(e.target)) {
+        list.classList.remove('active');
+      }
+    });
+  });
+
+  const filterIds = ['filter-topic', 'filter-date-start', 'filter-date-end'];
+  filterIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', applyFiltersAndRender);
+  });
+
+  const clearBtn = document.getElementById('clear-filters-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      customDropdowns.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+          input.value = '';
+          input.dataset.value = '';
+        }
+      });
+      filterIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      applyFiltersAndRender();
+    });
+  }
+
+  const exportBtn = document.getElementById('export-selected-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      const selectedIds = Array.from(document.querySelectorAll('.mq-checkbox:checked')).map(cb => cb.dataset.id);
+      if (selectedIds.length === 0) return;
+      const questionsToExport = state.savedQuestions.filter(q => selectedIds.includes(q._id));
+
+      const hasCoding = questionsToExport.some(q => q.type === 'coding');
+      if (hasCoding) {
+        // Build a unique ZIP download structure
+        downloadAsZip({ title: 'Exported_Questions', subtopic: 'Export', starterCode: {}, textExportMode: true, exportedQuestions: questionsToExport });
+      } else {
+        downloadQuestions(questionsToExport, 'mcq', 'md');
+      }
+    });
+  }
+}
+
+function applyFiltersAndRender() {
+  const container = document.getElementById('questions-table-container');
+  if (!container) return;
+
+  // Custom dropdowns fallback to typing if data-value isn't set, except readonlys
+  const getInputVal = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return '';
+    if (el.dataset.value !== undefined && el.dataset.value !== '') return el.dataset.value.toLowerCase();
+    return el.classList.contains('readonly-mode') ? '' : el.value.toLowerCase();
+  };
+
+  const fSession = getInputVal('filter-session');
+  const fSme = getInputVal('filter-sme');
+  const fType = getInputVal('filter-type');
+  const fCategory = getInputVal('filter-category');
+  const fDiff = getInputVal('filter-difficulty');
+
+  const fTopic = (document.getElementById('filter-topic')?.value || '').toLowerCase();
+  const fStart = document.getElementById('filter-date-start')?.value;
+  const fEnd = document.getElementById('filter-date-end')?.value;
+
+  const filtered = state.savedQuestions.filter(q => {
+    // Exact or loose match depending on if selected from dropdown or manually typed
+    if (fSession) {
+      const sessionSearch = fSession;
+      const qSessionId = (q.sessionId || '').toLowerCase();
+      const qSessionName = (q.sessionName || '').toLowerCase();
+      if (!qSessionId.includes(sessionSearch) && !qSessionName.includes(sessionSearch)) return false;
+    }
+
+    if (fSme) {
+      const smeSearch = fSme;
+      const qSmeName = (q.smeName || '').toLowerCase();
+      if (!qSmeName.includes(smeSearch)) return false;
+    }
+
+    if (fType && (q.type || '').toLowerCase() !== fType) return false;
+    if (fCategory && (q.category || '').toLowerCase() !== fCategory) return false;
+    if (fDiff && (q.difficulty || '').toLowerCase() !== fDiff) return false;
+
+    if (fTopic) {
+      const txt = ((q.subtopic || '') + ' ' + (q.title || '') + ' ' + (q.question || '')).toLowerCase();
+      if (!txt.includes(fTopic)) return false;
+    }
+
+    if (fStart || fEnd) {
+      const qDate = new Date(q.createdAt);
+      if (fStart && qDate < new Date(fStart)) return false;
+      if (fEnd) {
+        const endDate = new Date(fEnd);
+        endDate.setHours(23, 59, 59, 999);
+        if (qDate > endDate) return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Reset pagination if filters are actively used (so users don't get stuck on an empty page 2)
+  if (fSession || fSme || fType || fCategory || fDiff || fTopic || fStart || fEnd) {
+    state.mqPagination.sessionPage = 1;
+  }
+
+  renderQuestionsTable(filtered);
 }
 
 function renderQuestionsTable(questions) {
   const container = document.getElementById('questions-table-container');
   if (!container) return;
 
-  container.innerHTML = `
-      <div class="table-responsive">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Type</th>
-              <th>Topic</th>
-              <th>Difficulty</th>
-              <th>SME</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${questions.map(q => `
-              <tr id="q-row-${q._id}">
-                <td style="font-family: var(--font-mono); font-size: 0.8rem; opacity: 0.6;">#${q.id}</td>
-                <td><span class="badge badge-${q.type}">${q.type.toUpperCase()}</span></td>
-                <td><div style="font-weight: 600;">${q.subtopic}</div><div style="font-size: 0.75rem; opacity: 0.7;">${q.title || q.question.substring(0, 40) + '...'}</div></td>
-                <td><span class="diff-tag ${q.difficulty}">${q.difficulty}</span></td>
-                <td>${q.smeName || 'System'}</td>
-                <td>
-                  <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-secondary btn-sm" onclick="editSavedQuestion('${q._id}')">👁️ View</button>
-                    <button class="btn btn-secondary btn-sm" onclick="downloadSavedQuestion('${q._id}')">${q.type === 'coding' ? '📦 ZIP' : '⬇️ Download'}</button>
-                    <button class="btn btn-danger btn-sm" onclick="this.disabled=true; deleteSavedQuestion('${q._id}')">🗑️ Delete</button>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+  if (questions.length === 0) {
+    container.innerHTML = `<div class="empty-state-v2">No questions match your current filters.</div>`;
+    return;
+  }
+
+  // Group by session and calculate latest date for sorting
+  const groups = {};
+  questions.forEach(q => {
+    const sId = q.sessionId || 'ungrouped';
+    if (!groups[sId]) {
+      groups[sId] = {
+        name: q.sessionName || (sId === 'ungrouped' ? 'Ungrouped Questions' : sId),
+        id: sId,
+        items: [],
+        latestDate: 0
+      };
+    }
+    groups[sId].items.push(q);
+
+    // Track most recent item in group for sorting capabilities
+    const qDate = new Date(q.createdAt).getTime();
+    if (qDate > groups[sId].latestDate) {
+      groups[sId].latestDate = qDate;
+    }
+  });
+
+  // Sort items within each group: newest first
+  Object.values(groups).forEach(group => {
+    group.items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  });
+
+  // Convert to array and sort: Ungrouped first, then mostly recently generated overall
+  const groupArray = Object.values(groups).sort((a, b) => {
+    if (a.id === 'ungrouped') return -1;
+    if (b.id === 'ungrouped') return 1;
+    return b.latestDate - a.latestDate;
+  });
+
+  // --- Session Pagination (Global) ---
+  const totalSessionPages = Math.ceil(groupArray.length / state.mqPagination.sessionsPerPage) || 1;
+  // Failsafe bounds
+  if (state.mqPagination.sessionPage > totalSessionPages) state.mqPagination.sessionPage = totalSessionPages;
+  if (state.mqPagination.sessionPage < 1) state.mqPagination.sessionPage = 1;
+
+  const sessionStartIdx = (state.mqPagination.sessionPage - 1) * state.mqPagination.sessionsPerPage;
+  const sessionEndIdx = sessionStartIdx + state.mqPagination.sessionsPerPage;
+  const paginatedGroups = groupArray.slice(sessionStartIdx, sessionEndIdx);
+
+  // --- HTML Build ---
+  let html = '';
+
+  paginatedGroups.forEach(group => {
+    // Formatting Timestamp nicely
+    const dateObj = new Date(group.latestDate);
+    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    const formattedDate = group.latestDate > 0 ? `${dateStr}, ${timeStr}` : 'Unknown Date';
+
+    // Default: collapsed. Only expanded if user explicitly clicked to open.
+    const isCollapsed = state.collapsedGroups[group.id] !== false;
+
+    // --- Item Pagination (Internal) ---
+    const totalItems = group.items.length;
+    let currentItemPage = state.mqPagination.groupPages[group.id] || 1;
+    const totalItemPages = Math.ceil(totalItems / state.mqPagination.itemsPerPage) || 1;
+    if (currentItemPage > totalItemPages) currentItemPage = totalItemPages;
+    if (currentItemPage < 1) currentItemPage = 1;
+
+    const itemStartIdx = (currentItemPage - 1) * state.mqPagination.itemsPerPage;
+    const itemEndIdx = itemStartIdx + state.mqPagination.itemsPerPage;
+    const paginatedItems = group.items.slice(itemStartIdx, itemEndIdx);
+
+    html += `
+    <div class="session-group-card" style="background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 24px; overflow: hidden; transition: all 0.3s ease;">
+      <div style="background: rgba(255,255,255,0.02); padding: 12px 20px; border-bottom: ${isCollapsed ? 'none' : '1px solid var(--border)'}; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s ease;" onclick="toggleGroupCollapse('${group.id}')" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='rgba(255,255,255,0.02)'">
+        
+        <div style="display: flex; align-items: center; gap: 15px;">
+           <span style="font-size: 1.2rem; display: inline-block; width: 20px; transition: transform 0.3s ease; transform: ${isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'}; color: var(--primary-light);">▼</span>
+           <div>
+             <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+               <input type="checkbox" class="session-checkbox" data-session="${group.id}" style="accent-color: var(--primary); cursor: pointer; width: 16px; height: 16px;" title="Select all in session (Even hidden pages)" onclick="event.stopPropagation();">
+               <span style="font-weight: 600;">${group.name}</span>
+               <span class="badge badge-primary" style="font-size: 0.7rem; background: rgba(99, 102, 241, 0.15); color: var(--primary-light);">${totalItems} Items</span>
+             </h3>
+             <div style="display: flex; gap: 12px; font-family: monospace; font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px; padding-left: 24px;">
+                ${group.id !== 'ungrouped' ? `<span>ID: <span style="opacity: 0.7;">${group.id}</span></span>` : ''}
+                ${group.id !== 'ungrouped' && group.latestDate > 0 ? `<span style="opacity: 0.5;">|</span> <span>🕒 ${formattedDate}</span>` : ''}
+             </div>
+           </div>
+        </div>
+        
+        <div style="display: flex; gap: 8px;" onclick="event.stopPropagation();">
+          ${group.id !== 'ungrouped' ? `
+            <button class="btn btn-secondary btn-sm" onclick="renameSession('${group.id}', '${group.name.replace(/'/g, "\\'")}')" style="background: transparent; border: 1px solid rgba(255,255,255,0.1);">Rename</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportSession('${group.id}')" style="background: transparent; border: 1px solid rgba(255,255,255,0.1);">Export ZIP</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSession('${group.id}')" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--danger-light);">Delete Session</button>
+          ` : ''}
+        </div>
+
       </div>
+      
+      <div id="col-body-${group.id}" style="display: ${isCollapsed ? 'none' : 'block'};">
+        <div class="table-responsive" style="margin: 0; border: none; background: transparent;">
+          <table class="admin-table" style="margin: 0;">
+            <thead>
+              <tr>
+                 <th style="width: 40px; text-align: center;">✓</th>
+                <th>Type</th>
+                <th>Topic</th>
+                <th>Difficulty</th>
+                <th>SME</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${paginatedItems.map(q => `
+                <tr id="q-row-${q._id}">
+                  <td style="text-align: center;">
+                     <input type="checkbox" class="mq-checkbox" data-id="${q._id}" data-session="${group.id}" style="accent-color: var(--primary); cursor: pointer; width: 16px; height: 16px;">
+                  </td>
+                  <td><span class="badge badge-${q.type}">${q.type.toUpperCase()}</span></td>
+                  <td><div style="font-weight: 600; color: var(--text-primary);">${q.subtopic}</div><div style="font-size: 0.75rem; opacity: 0.7;">${q.title || (q.question ? q.question.substring(0, 50) + '...' : 'No description available')}</div></td>
+                  <td><span class="diff-tag ${q.difficulty}">${q.difficulty}</span></td>
+                  <td style="opacity: 0.8;">${q.smeName || 'System'}</td>
+                  <td>
+                    <div style="display: flex; gap: 8px;">
+                      <button class="btn btn-secondary btn-sm" onclick="editSavedQuestion('${q._id}')" style="padding: 4px 8px; font-size: 0.75rem;">👁️ View</button>
+                      <button class="btn btn-secondary btn-sm" onclick="downloadSavedQuestion('${q._id}')" style="padding: 4px 8px; font-size: 0.75rem;">${q.type === 'coding' ? '📦 ZIP' : '⬇️ Download'}</button>
+                      <button class="btn btn-danger btn-sm" onclick="this.disabled=true; deleteSavedQuestion('${q._id}')" style="padding: 4px 8px; font-size: 0.75rem; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: var(--danger-light);">🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        ${totalItemPages > 1 ? `
+        <div style="padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.15);">
+          <span style="font-size: 0.75rem; color: var(--text-secondary);">Showing ${(itemStartIdx + 1)} - ${Math.min(itemEndIdx, totalItems)} of ${totalItems} questions in this block</span>
+          <div style="display: flex; gap: 5px; align-items: center;">
+             <button class="btn btn-secondary btn-sm" onclick="changeMqGroupPage('${group.id}', ${currentItemPage - 1})" ${currentItemPage === 1 ? 'disabled' : ''} style="padding: 2px 8px; font-size: 0.8rem;">&lt;</button>
+             <span style="font-size: 0.8rem; margin: 0 8px;">Page ${currentItemPage} / ${totalItemPages}</span>
+             <button class="btn btn-secondary btn-sm" onclick="changeMqGroupPage('${group.id}', ${currentItemPage + 1})" ${currentItemPage === totalItemPages ? 'disabled' : ''} style="padding: 2px 8px; font-size: 0.8rem;">&gt;</button>
+          </div>
+        </div>
+        ` : ''}
+
+      </div>
+    </div>
     `;
+  });
+
+  // Global Session Pagination Bar
+  if (totalSessionPages > 1 || state.mqPagination.sessionPage > 1) {
+    html += `
+       <div class="global-pagination-bar" style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 30px; margin-bottom: 20px; padding: 15px; background: rgba(15, 23, 42, 0.4); border-radius: 8px; border: 1px solid var(--border);">
+          <button class="btn btn-secondary btn-sm" onclick="changeMqSessionPage(${state.mqPagination.sessionPage - 1})" ${state.mqPagination.sessionPage === 1 ? 'disabled' : ''}>← Previous Page</button>
+          <span style="font-weight: bold; color: var(--primary-light);">Session Block ${state.mqPagination.sessionPage} of ${totalSessionPages}</span>
+          <button class="btn btn-secondary btn-sm" onclick="changeMqSessionPage(${state.mqPagination.sessionPage + 1})" ${state.mqPagination.sessionPage === totalSessionPages ? 'disabled' : ''}>Next Page →</button>
+       </div>
+     `;
+  }
+
+  container.innerHTML = html;
+
+  // Re-attach Checkbox Listeners (Preserved functionality)
+  const sessionCbs = container.querySelectorAll('.session-checkbox');
+  const itemCbs = container.querySelectorAll('.mq-checkbox');
+  const exportBtn = document.getElementById('export-selected-btn');
+
+  const updateExportBtn = () => {
+    // Note: Due to pagination, we can only safely export items currently visible unless stored in a deeper selection buffer state. 
+    // The current limitation export logic is inherently constrained to what checkboxes are physically rendered.
+    const cnt = document.querySelectorAll('#questions-table-container .mq-checkbox:checked').length;
+    if (exportBtn) {
+      exportBtn.disabled = cnt === 0;
+      exportBtn.textContent = `📦 Export Selected (${cnt})`;
+    }
+  };
+
+  sessionCbs.forEach(scb => {
+    scb.addEventListener('change', (e) => {
+      const sId = e.target.dataset.session;
+      const isChecked = e.target.checked;
+
+      // Select all currently VISIBLE checkboxes in this group
+      container.querySelectorAll(`.mq-checkbox[data-session="${sId}"]`).forEach(cb => {
+        cb.checked = isChecked;
+      });
+      updateExportBtn();
+    });
+  });
+
+  itemCbs.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const sId = e.target.dataset.session;
+      const groupCbs = Array.from(container.querySelectorAll(`.mq-checkbox[data-session="${sId}"]`));
+      const sessCb = document.querySelector(`.session-checkbox[data-session="${sId}"]`);
+      if (sessCb) {
+        sessCb.checked = groupCbs.every(c => c.checked) && groupCbs.length > 0;
+      }
+      updateExportBtn();
+    });
+  });
 }
+
+// =============================================
+// PAGINATION & UI TOGGLE GLOBALS
+// =============================================
+
+window.toggleGroupCollapse = (groupId) => {
+  if (state.collapsedGroups[groupId] === false) {
+    delete state.collapsedGroups[groupId]; // Re-collapse (back to default)
+  } else {
+    state.collapsedGroups[groupId] = false; // Expand
+  }
+  // Re-render directly with current visual filters
+  applyFiltersAndRender();
+};
+
+window.changeMqSessionPage = (newPage) => {
+  state.mqPagination.sessionPage = newPage;
+  // Scroll to top of table gently
+  const container = document.getElementById('questions-table-container');
+  if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  applyFiltersAndRender();
+};
+
+window.changeMqGroupPage = (groupId, newPage) => {
+  state.mqPagination.groupPages[groupId] = newPage;
+  applyFiltersAndRender();
+};
+
+// Ensure filter listeners attach when the tab is accessed or globally initialized
+document.addEventListener('DOMContentLoaded', () => { setTimeout(attachFilterListeners, 500); });
+
+
+window.renameSession = async (sessionId, currentName) => {
+  const newName = prompt('Enter a new name for this session:', currentName);
+  if (!newName || newName.trim() === '' || newName === currentName) return;
+
+  try {
+    const response = await fetch(`/api/questions/session/${sessionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionName: newName.trim() })
+    });
+
+    if (response.ok) {
+      showToast('success', 'Session renamed successfully!');
+      fetchAndRenderSavedQuestions(true); // Force refetch to update all group labels
+    } else {
+      throw new Error('Failed to rename session');
+    }
+  } catch (error) {
+    console.error(error);
+    showToast('error', error.message);
+  }
+};
+
+window.exportSession = (sessionId) => {
+  const sessionQuestions = state.savedQuestions.filter(q => q.sessionId === sessionId);
+  if (sessionQuestions.length === 0) {
+    showToast('error', 'No questions found for this session.');
+    return;
+  }
+
+  const hasCoding = sessionQuestions.some(q => q.type === 'coding');
+  const sessionName = sessionQuestions[0].sessionName || sessionId;
+
+  if (hasCoding) {
+    // Treat as a mixed batch export logic (requires downloadAsZip support for multiple/mixed formats)
+    downloadAsZip({
+      title: sessionName,
+      subtopic: 'Session Export',
+      starterCode: {}, // Dummy object
+      textExportMode: true,
+      exportedQuestions: sessionQuestions
+    });
+  } else {
+    // Pure MCQ markdown export
+    downloadQuestions(sessionQuestions, 'mcq', 'md');
+  }
+};
+
+window.deleteSession = async (sessionId) => {
+  if (!confirm('Are you sure you want to delete ALL questions in this session? This action cannot be undone.')) return;
+
+  try {
+    const response = await fetch(`/api/questions/session/${sessionId}`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      showToast('success', 'Session deleted successfully!');
+      fetchAndRenderSavedQuestions(true); // Force refetch
+      updateDashboardStats();
+    } else {
+      throw new Error('Failed to delete session');
+    }
+  } catch (error) {
+    console.error(error);
+    showToast('error', error.message);
+  }
+};
 
 window.deleteSavedQuestion = async (mongoId) => {
   try {
@@ -2992,3 +4097,4 @@ function showAIAnalysisModal(evaluation) {
     }
   };
 }
+

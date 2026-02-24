@@ -5,7 +5,7 @@ import { showToast, showLoading } from './utils.js';
 // AI GENERATION LOGIC
 // =============================================
 
-export async function generateAIQuestions(topic, type, difficulty, count, category, subtopic, smeName) {
+export async function generateAIQuestions(topic, type, difficulty, count, category, subtopic, smeName, apiKey, model) {
     const isMcq = type === 'mcq';
     const difficultyContext = {
         easy: 'Objective: Foundational logic. Difficulty: Iterative (O(N) or O(1)). Scope: Basic syntax, loops, and conditional logic.',
@@ -24,9 +24,9 @@ export async function generateAIQuestions(topic, type, difficulty, count, catego
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.groqKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-            model: state.groqModel,
+            model: model,
             messages: [
                 { role: 'system', content: 'You are an expert technical SME. You output ONLY valid JSON.' },
                 { role: 'user', content: getPrompt(topic, type, difficulty, count, category, subtopic, isFramework, difficultyContext) }
