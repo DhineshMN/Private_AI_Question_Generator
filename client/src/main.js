@@ -48,6 +48,14 @@ const state = {
 // =============================================
 function renderApp() {
   document.getElementById('app').innerHTML = `
+    <!-- Brand Header -->
+    <header class="brand-header" id="brand-header">
+      <div class="brand-header-inner">
+        <img src="/new-edutech-logo.webp" alt="L&T EduTech Logo" class="brand-logo brand-logo-edutech" />
+        <img src="/download.svg" alt="Solve Logo" class="brand-logo brand-logo-solve" />
+      </div>
+    </header>
+
     <!-- Animated Background -->
     <div class="bg-animated">
       <div class="bg-orb bg-orb-1"></div>
@@ -99,6 +107,19 @@ function renderApp() {
     <div id="result-page" class="page">
       ${renderResultPage()}
     </div>
+
+    <!-- Confirmation Modal (top-level so it's always accessible) -->
+    <div class="loading-overlay" id="confirm-modal-overlay" style="z-index: 9999; backdrop-filter: blur(8px);">
+      <div class="card card-glass" style="max-width: 420px; width: 90%; padding: 32px; text-align: center; animation: slideIn 0.3s ease;">
+        <div id="confirm-modal-icon" style="font-size: 2.5rem; margin-bottom: 16px;">🚪</div>
+        <h3 id="confirm-modal-title" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 10px; color: var(--text);">Log Out?</h3>
+        <p id="confirm-modal-message" style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 28px;">Are you sure you want to log out?</p>
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <button class="btn btn-secondary" id="confirm-modal-cancel" style="min-width: 120px;">Cancel</button>
+          <button class="btn btn-primary" id="confirm-modal-confirm" style="min-width: 120px; background: linear-gradient(135deg, #ef4444, #dc2626);">Log Out</button>
+        </div>
+      </div>
+    </div>
   `;
 
   attachHomeListeners();
@@ -111,32 +132,110 @@ function renderApp() {
 // =============================================
 function renderHomePage() {
   return `
-    <div id="landing-view" class="home-container">
-      <div class="home-logo">
-        <div class="logo-icon">🧠</div>
-        <h1 class="home-title">AI Mock Test Generator</h1>
-        <p class="landing-desc">
-          Master your coding and technical skills with AI-powered assessments. <br>
-          Generate customized mock tests and get instant performance insights.
+    <!-- Unified Landing: Split Layout -->
+    <div id="landing-view" style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 60px); width: 100%; padding: 0 60px; gap: 40px; box-sizing: border-box; overflow: hidden;">
+
+      <!-- LEFT: Branding & Features -->
+      <div style="flex: 1; max-width: 520px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 36px;">
+          <div class="logo-icon" style="width: 64px; height: 64px; border-radius: 18px; font-size: 1.8rem; flex-shrink: 0;">🧠</div>
+          <h1 style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin: 0; line-height: 1.3; text-align: center;">AI Question Generator</h1>
+        </div>
+
+        <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.7; margin-bottom: 40px; max-width: 440px;">
+          Generate high-quality MCQ & coding questions powered by AI. Manage sessions, export in multiple formats, and build your question bank effortlessly.
         </p>
+
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">✨</div>
+            <div>
+              <div style="font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 3px;">AI-Powered Generation</div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Generate exam-quality MCQs and coding challenges using LLMs with detailed explanations.</div>
+            </div>
+          </div>
+
+
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(6, 182, 212, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">📄</div>
+            <div>
+              <div style="font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 3px;">Multi-Format Export</div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Export questions as PDF, Excel, ZIP, or Markdown — ready for exams and assessments.</div>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: flex-start; gap: 14px;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(16, 185, 129, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">👥</div>
+            <div>
+              <div style="font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 3px;">Multi-User Access</div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Secure login with role-based access. Each SME gets their own profile and API key.</div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="landing-actions">
-        <button class="btn btn-primary btn-lg" id="goto-practice-btn" style="min-width: 220px;">
-          🎓 Practice Portal
-        </button>
-        <button class="btn btn-secondary btn-lg" id="goto-admin-landing-btn" style="min-width: 220px;">
-          ⚙️ Admin Portal
-        </button>
+      <!-- RIGHT: Auth Card -->
+      <div style="flex: 0 0 auto; width: 400px;">
+        <div class="card card-glass" style="width: 100%; padding: 32px; border: 1px solid rgba(255,255,255,0.08);">
+          <!-- Auth Mode Toggle -->
+          <div class="type-segmented-control" id="auth-mode-toggle" style="margin-bottom: 24px;">
+            <button class="type-segment active" data-value="login">🔑 Sign In</button>
+            <button class="type-segment" data-value="signup">📝 Sign Up</button>
+          </div>
+
+          <!-- Error / Success Banner -->
+          <div id="auth-message" style="display: none; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 20px; line-height: 1.4;"></div>
+
+          <!-- Login Form -->
+          <div id="auth-login-form">
+            <div class="form-group" style="margin-bottom: 20px;">
+              <label class="form-label" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;">Email Address</label>
+              <input type="email" class="form-input" id="login-email" placeholder="admin@admin.com" autocomplete="email" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 0.92rem; outline: none; transition: var(--transition);">
+            </div>
+            <div class="form-group" style="margin-bottom: 24px;">
+              <label class="form-label" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;">Password</label>
+              <input type="password" class="form-input" id="login-password" placeholder="Enter your password" autocomplete="current-password" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 0.92rem; outline: none; transition: var(--transition);">
+            </div>
+            <button class="btn btn-primary btn-lg w-full" id="login-submit-btn" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+              🔓 Sign In
+            </button>
+          </div>
+
+          <!-- Signup Form -->
+          <div id="auth-signup-form" style="display: none;">
+            <div class="form-group" style="margin-bottom: 18px;">
+              <label class="form-label" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;">Email Address</label>
+              <input type="email" class="form-input" id="signup-email" placeholder="you@example.com" autocomplete="email" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 0.92rem; outline: none; transition: var(--transition);">
+            </div>
+            <div class="form-group" style="margin-bottom: 18px;">
+              <label class="form-label" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;">Password</label>
+              <input type="password" class="form-input" id="signup-password" placeholder="Min. 6 characters" autocomplete="new-password" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 0.92rem; outline: none; transition: var(--transition);">
+            </div>
+            <div class="form-group" style="margin-bottom: 24px;">
+              <label class="form-label" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px;">Confirm Password</label>
+              <input type="password" class="form-input" id="signup-confirm" placeholder="Re-enter password" autocomplete="new-password" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); padding: 12px 16px; border-radius: 8px; font-size: 0.92rem; outline: none; transition: var(--transition);">
+            </div>
+            <button class="btn btn-primary btn-lg w-full" id="signup-submit-btn" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+              ✨ Create Account
+            </button>
+          </div>
+
+          <!-- Footer Hint -->
+          <div style="margin-top: 20px; text-align: center; font-size: 0.76rem; color: var(--text-secondary); opacity: 0.6;">
+            🔒 Credentials stored securely in your local database
+          </div>
+        </div>
       </div>
 
-      <div class="home-features" style="margin-top: 20px;">
-        <div class="feature-chip"><span>⏱️</span><span>Timed Tests</span></div>
-        <div class="feature-chip"><span>📊</span><span>Instant Results</span></div>
-        <div class="feature-chip"><span>🎯</span><span>3 Difficulty Levels</span></div>
-        <div class="feature-chip"><span>💡</span><span>AI-Powered</span></div>
-      </div>
     </div>
+
+    <!-- Hidden legacy elements (keep for JS compatibility) -->
+    <div id="auth-view" style="display: none;"></div>
+    <button id="goto-practice-btn" style="display: none;"></button>
+    <button id="goto-admin-landing-btn" style="display: none;"></button>
+    <button id="goto-login-btn" style="display: none;"></button>
+    <button id="auth-back-btn" style="display: none;"></button>
+    <span id="auth-view-title" style="display: none;"></span>
 
     <div id="selection-view" class="home-container" style="display: none;">
       <div class="home-logo" style="margin-bottom: 0;">
@@ -218,15 +317,15 @@ function renderAdminPage() {
             <span class="nav-icon">✨</span> Question Generator
           </button>
           <button class="nav-item" data-tab="questions">
-            <span class="nav-icon">📚</span> Manage Questions
+            <span class="nav-icon">📚</span> Question Bank
           </button>
           <button class="nav-item" data-tab="settings">
             <span class="nav-icon">⚙️</span> Settings
           </button>
         </nav>
         <div class="sidebar-footer">
-          <button class="btn btn-secondary btn-sm w-full" id="admin-back-btn">
-            ← Exit Admin
+          <button class="btn btn-secondary btn-sm w-full" id="admin-back-btn" style="display: flex; align-items: center; justify-content: center; gap: 8px; border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; background: rgba(239, 68, 68, 0.08);">
+            🚪 Logout
           </button>
         </div>
       </aside>
@@ -361,8 +460,8 @@ function renderAdminPage() {
 
           <div class="generator-container">
             <div class="card card-glass generator-form">
-              <!-- Session Controller -->
-              <div id="session-controller-ui" style="margin-bottom: 24px; padding: 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 8px;">
+              <!-- Session Controller (hidden - kept for future use) -->
+              <div id="session-controller-ui" style="display: none; pointer-events: none; margin-bottom: 24px; padding: 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <label class="form-label" style="margin: 0;">Generation Session</label>
                   <span id="session-status-badge" class="badge badge-secondary" style="font-size: 0.65rem;">Inactive</span>
@@ -474,8 +573,8 @@ function renderAdminPage() {
         <div id="tab-questions" class="admin-tab">
           <header class="admin-header">
             <div>
-               <h2 class="admin-title">Manage Questions</h2>
-               <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Search, filter, export, and manage generated sessions</p>
+               <h2 class="admin-title">Question Bank</h2>
+               <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">Search, filter, export, and manage your generated questions</p>
             </div>
             <div style="display: flex; gap: 10px;">
                 <button class="btn btn-primary btn-sm" id="export-selected-btn" disabled>📦 Export Selected</button>
@@ -499,7 +598,8 @@ function renderAdminPage() {
                 .filter-input:focus { border-color: var(--primary); }
               </style>
 
-              <div class="filter-group">
+              <!-- Session filter (hidden - kept for future use) -->
+              <div class="filter-group" style="display: none;">
                 <label class="filter-label">Session</label>
                 <div class="custom-dropdown-container" id="container-filter-session">
                   <input type="text" class="filter-input custom-dropdown-input" id="filter-session" placeholder="All Sessions" autocomplete="off" data-value="">
@@ -507,7 +607,8 @@ function renderAdminPage() {
                 </div>
               </div>
 
-              <div class="filter-group">
+              <!-- SME filter (hidden - kept for future use) -->
+              <div class="filter-group" style="display: none;">
                 <label class="filter-label">SME</label>
                 <div class="custom-dropdown-container" id="container-filter-sme">
                   <input type="text" class="filter-input custom-dropdown-input" id="filter-sme" placeholder="All SMEs" autocomplete="off" data-value="">
@@ -869,6 +970,123 @@ function attachHomeListeners() {
     selectionView.style.display = 'flex';
   });
 
+  // Auth view toggle
+  const authView = document.getElementById('auth-view');
+
+  document.getElementById('goto-login-btn').addEventListener('click', () => {
+    landingView.style.display = 'none';
+    authView.style.display = 'flex';
+  });
+
+  document.getElementById('auth-back-btn').addEventListener('click', () => {
+    authView.style.display = 'none';
+    landingView.style.display = 'flex';
+    // Reset forms
+    const msgEl = document.getElementById('auth-message');
+    if (msgEl) msgEl.style.display = 'none';
+  });
+
+  // Auth mode toggle (Login ↔ Signup)
+  const authModeSegments = document.querySelectorAll('#auth-mode-toggle .type-segment');
+  authModeSegments.forEach(seg => {
+    seg.addEventListener('click', () => {
+      authModeSegments.forEach(s => s.classList.remove('active'));
+      seg.classList.add('active');
+      const mode = seg.dataset.value;
+      document.getElementById('auth-login-form').style.display = mode === 'login' ? 'block' : 'none';
+      document.getElementById('auth-signup-form').style.display = mode === 'signup' ? 'block' : 'none';
+      document.getElementById('auth-view-title').textContent = mode === 'login' ? 'Admin Login' : 'Create Account';
+      const msgEl = document.getElementById('auth-message');
+      if (msgEl) msgEl.style.display = 'none';
+    });
+  });
+
+  // Auth message helper
+  function showAuthMessage(type, msg) {
+    const el = document.getElementById('auth-message');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.background = type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+    el.style.border = `1px solid ${type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`;
+    el.style.color = type === 'error' ? '#fca5a5' : '#6ee7b7';
+    el.innerHTML = `${type === 'error' ? '❌' : '✅'} ${msg}`;
+  }
+
+  // Login handler
+  document.getElementById('login-submit-btn').addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    if (!email || !password) return showAuthMessage('error', 'Please fill in all fields');
+
+    const btn = document.getElementById('login-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-sm"></span> Logging in...';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+
+      showToast('success', `Welcome back, ${data.user.email}!`);
+      enterAdminPanel();
+    } catch (err) {
+      showAuthMessage('error', err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🔓 Login';
+    }
+  });
+
+  // Signup handler
+  document.getElementById('signup-submit-btn').addEventListener('click', async () => {
+    const email = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const confirm = document.getElementById('signup-confirm').value;
+
+    if (!email || !password || !confirm) return showAuthMessage('error', 'Please fill in all fields');
+    if (password.length < 6) return showAuthMessage('error', 'Password must be at least 6 characters');
+    if (password !== confirm) return showAuthMessage('error', 'Passwords do not match');
+
+    const btn = document.getElementById('signup-submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-sm"></span> Creating account...';
+
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Signup failed');
+
+      showAuthMessage('success', 'Account created! Logging you in...');
+      // Auto-login after signup
+      setTimeout(() => {
+        showToast('success', `Welcome, ${data.user.email}!`);
+        enterAdminPanel();
+      }, 1000);
+    } catch (err) {
+      showAuthMessage('error', err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '✨ Create Account';
+    }
+  });
+
+  // Enter key support for login/signup forms
+  document.getElementById('login-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('login-submit-btn').click();
+  });
+  document.getElementById('signup-confirm').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('signup-submit-btn').click();
+  });
+
+  // Legacy admin button (hidden but keep listener to avoid errors)
   document.getElementById('goto-admin-landing-btn').addEventListener('click', () => {
     showPage('admin-page');
   });
@@ -942,11 +1160,67 @@ function attachHomeListeners() {
 // =============================================
 // ADMIN LISTENERS
 // =============================================
+// =============================================
+// ENTER ADMIN PANEL (reset to Generator tab)
+// =============================================
+function enterAdminPanel() {
+  showPage('admin-page');
+  // Reset to Generator tab for every login
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+  const genNavItem = document.querySelector('[data-tab="generator"]');
+  const genTab = document.getElementById('tab-generator');
+  if (genNavItem) genNavItem.classList.add('active');
+  if (genTab) genTab.classList.add('active');
+  // Clear login form fields
+  const loginEmail = document.getElementById('login-email');
+  const loginPass = document.getElementById('login-password');
+  if (loginEmail) loginEmail.value = '';
+  if (loginPass) loginPass.value = '';
+  const authMsg = document.getElementById('auth-message');
+  if (authMsg) authMsg.style.display = 'none';
+}
+
+// =============================================
+// LOGOUT WITH CONFIRMATION
+// =============================================
+function showLogoutConfirmation() {
+  const overlay = document.getElementById('confirm-modal-overlay');
+  if (!overlay) return;
+  overlay.classList.add('active');
+
+  const confirmBtn = document.getElementById('confirm-modal-confirm');
+  const cancelBtn = document.getElementById('confirm-modal-cancel');
+
+  const cleanup = () => { overlay.classList.remove('active'); };
+
+  // Remove old listeners by cloning
+  const newConfirm = confirmBtn.cloneNode(true);
+  const newCancel = cancelBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+  cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+
+  newCancel.addEventListener('click', cleanup);
+  newConfirm.addEventListener('click', () => {
+    cleanup();
+    showPage('home-page');
+    // Reset auth view to login mode
+    const authView = document.getElementById('auth-view');
+    const landingView = document.getElementById('landing-view');
+    if (authView) authView.style.display = 'none';
+    if (landingView) landingView.style.display = 'flex';
+    showToast('info', 'You have been logged out successfully');
+  });
+
+  // Close on overlay click (outside card)
+  overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
+}
+
 function attachAdminListeners() {
   const backBtn = document.getElementById('admin-back-btn');
   if (backBtn) {
     backBtn.addEventListener('click', () => {
-      showPage('home-page');
+      showLogoutConfirmation();
     });
   }
 
@@ -1883,9 +2157,10 @@ function downloadQuestions(questions, type, format) {
       md += `** Difficulty:** ${q.difficulty || 'N/A'} | ** Time Limit:** ${q.timeLimit || '45'} mins\n\n`;
       md += `### 📋 Description\n${q.description} \n\n`;
 
-      // Project Structure (for framework challenges)
-      if (q.projectStructure) {
-        md += `### 📁 Project Structure\n\`\`\`\n${q.projectStructure}\n\`\`\`\n\n`;
+      // Project Structure (auto-generate from starterCode for accuracy)
+      const exportTree = (q.starterCode && typeof q.starterCode === 'object') ? buildTreeFromFiles(q.starterCode) : q.projectStructure;
+      if (exportTree) {
+        md += `### 📁 Project Structure\n\`\`\`\n${exportTree}\n\`\`\`\n\n`;
       }
 
       // Starter Code — all files merged into one block in the single Markdown file
@@ -2210,14 +2485,14 @@ function showQuestionDetailModal(q, type, onSave) {
             <textarea class="form-input" id="edit-desc" style="min-height: 120px;">${typeof q.description === 'object' ? JSON.stringify(q.description, null, 2) : q.description}</textarea>
           </div>
 
-          ${q.projectStructure ? `
+          ${(q.projectStructure || (q.starterCode && typeof q.starterCode === 'object')) ? `
           <div class="form-group" style="margin-top: 24px;">
             <div class="editor-section-card">
               <div class="editor-section-header">
                 <span style="font-size: 1.1rem;">📂</span>
                 <span class="editor-section-title">Project Structure (Tree View)</span>
               </div>
-              <div class="editor-project-tree" style="background: #0d0d16; color: #a5b4fc; font-weight: 500;">${q.projectStructure}</div>
+              <div class="editor-project-tree" style="background: #0d0d16; color: #a5b4fc; font-weight: 500;">${(q.starterCode && typeof q.starterCode === 'object') ? buildTreeFromFiles(q.starterCode) : q.projectStructure}</div>
             </div>
           </div>
           ` : ''}
@@ -2760,6 +3035,53 @@ function submitMCQTest() {
 // =============================================
 // CODING TEST
 // =============================================
+// HELPER: Build ASCII tree from starterCode file paths
+// =============================================
+function buildTreeFromFiles(starterCode) {
+  if (!starterCode || typeof starterCode !== 'object') return '';
+  const files = Object.keys(starterCode);
+  if (files.length === 0) return '';
+
+  // Build a nested tree structure
+  const root = {};
+  files.forEach(filePath => {
+    const parts = filePath.split('/');
+    let current = root;
+    parts.forEach((part, idx) => {
+      if (!current[part]) {
+        current[part] = (idx === parts.length - 1) ? null : {};
+      }
+      if (current[part] !== null) {
+        current = current[part];
+      }
+    });
+  });
+
+  // Render ASCII tree
+  function renderNode(node, prefix) {
+    const entries = Object.keys(node).sort((a, b) => {
+      // Directories first, then files
+      const aIsDir = node[a] !== null;
+      const bIsDir = node[b] !== null;
+      if (aIsDir && !bIsDir) return -1;
+      if (!aIsDir && bIsDir) return 1;
+      return a.localeCompare(b);
+    });
+    let result = '';
+    entries.forEach((key, idx) => {
+      const isLast = idx === entries.length - 1;
+      const connector = isLast ? '└── ' : '├── ';
+      const childPrefix = isLast ? '    ' : '│   ';
+      result += prefix + connector + key + '\n';
+      if (node[key] !== null) {
+        result += renderNode(node[key], prefix + childPrefix);
+      }
+    });
+    return result;
+  }
+
+  return '.\n' + renderNode(root, '');
+}
 
 function renderCodingProblem() {
   const p = state.problem;
@@ -2823,14 +3145,17 @@ function renderCodingProblem() {
     }
   }
 
-  // Project Structure (Only if relevant for subjects/frameworks)
+  // Project Structure (auto-generate from starterCode for accuracy)
   const structurePanel = document.getElementById('project-structure-panel');
   if (structurePanel) {
-    if (p.projectStructure) {
+    // Prefer auto-generated tree from starterCode keys for accuracy
+    const autoTree = (p.starterCode && typeof p.starterCode === 'object') ? buildTreeFromFiles(p.starterCode) : '';
+    const treeContent = autoTree || p.projectStructure || '';
+    if (treeContent) {
       structurePanel.style.display = 'block';
       structurePanel.innerHTML = `
         <p style="font-weight: 600; margin: 30px 0 15px 0; font-size: 1rem; color: #fff;">Project Structure:</p>
-        <div class="editor-project-tree" style="background: rgba(13, 13, 26, 0.4); border: 1px solid var(--border);">${p.projectStructure}</div>
+        <div class="editor-project-tree" style="background: rgba(13, 13, 26, 0.4); border: 1px solid var(--border);">${treeContent}</div>
       `;
     } else {
       structurePanel.style.display = 'none';
@@ -3694,7 +4019,7 @@ function renderQuestionsTable(questions) {
     const sId = q.sessionId || 'ungrouped';
     if (!groups[sId]) {
       groups[sId] = {
-        name: q.sessionName || (sId === 'ungrouped' ? 'Ungrouped Questions' : sId),
+        name: q.sessionName || (sId === 'ungrouped' ? 'All Questions' : sId),
         id: sId,
         items: [],
         latestDate: 0
@@ -3735,6 +4060,8 @@ function renderQuestionsTable(questions) {
   let html = '';
 
   paginatedGroups.forEach(group => {
+    // Hide session groups — only show ungrouped ("All Questions")
+    if (group.id !== 'ungrouped') return;
     // Formatting Timestamp nicely
     const dateObj = new Date(group.latestDate);
     const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -3806,7 +4133,7 @@ function renderQuestionsTable(questions) {
                   <td><span class="badge badge-${q.type}">${q.type.toUpperCase()}</span></td>
                   <td><div style="font-weight: 600; color: var(--text-primary);">${q.subtopic}</div><div style="font-size: 0.75rem; opacity: 0.7;">${q.title || (q.question ? q.question.substring(0, 50) + '...' : 'No description available')}</div></td>
                   <td><span class="diff-tag ${q.difficulty}">${q.difficulty}</span></td>
-                  <td style="opacity: 0.8;">${q.smeName || 'System'}</td>
+                  <td style="opacity: 0.8;"><div>${q.smeName || 'System'}</div><div style="font-size: 0.7rem; opacity: 0.6; margin-top: 2px;">🕒 ${new Date(q.createdAt).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div></td>
                   <td>
                     <div style="display: flex; gap: 8px;">
                       <button class="btn btn-secondary btn-sm" onclick="editSavedQuestion('${q._id}')" style="padding: 4px 8px; font-size: 0.75rem;">👁️ View</button>
