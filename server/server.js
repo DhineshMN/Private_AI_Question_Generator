@@ -9,6 +9,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Import models
 const Question = require('./database/models/Question');
 const SME = require('./database/models/SME');
+const User = require('./database/models/User');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,8 +23,66 @@ mongoose.connection.on('error', err => console.error('❌ Mongoose Connection Er
 mongoose.connection.on('disconnected', () => console.log('⚠️ Mongoose disconnected!'));
 
 mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
-    .then(() => console.log('✅ Connected to MongoDB (Compass)'))
+    .then(async () => {
+        console.log('✅ Connected to MongoDB (Compass)');
+        // Seed Master Admin
+        try {
+            const existing = await User.findOne({ email: 'admin@admin.com' });
+            if (!existing) {
+                await new User({ email: 'admin@admin.com', password: 'admin123', role: 'admin' }).save();
+                console.log('🔑 Master Admin seeded: admin@admin.com / admin123');
+            }
+        } catch (e) { console.error('Seed error:', e.message); }
+    })
     .catch((err) => console.error('❌ MongoDB Connection Error:', err));
+
+// =============================================
+// AUTH ROUTES
+// =============================================
+app.post('/api/auth/signup', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+        const existing = await User.findOne({ email: email.toLowerCase().trim() });
+        if (existing) {
+            return res.status(409).json({ error: 'An account with this email already exists' });
+        }
+        const user = new User({ email, password, role: 'user' });
+        await user.save();
+        console.log(`✅ New user registered: ${email}`);
+        res.status(201).json({ success: true, user: { email: user.email, role: user.role } });
+    } catch (err) {
+        console.error('❌ Signup Error:', err.message);
+        res.status(500).json({ error: 'Registration failed. Please try again.' });
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        const isMatch = user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        console.log(`✅ User logged in: ${email} (${user.role})`);
+        res.json({ success: true, user: { email: user.email, role: user.role } });
+    } catch (err) {
+        console.error('❌ Login Error:', err.message);
+        res.status(500).json({ error: 'Login failed. Please try again.' });
+    }
+});
 
 // Routes
 app.get('/api/questions', async (req, res) => {
