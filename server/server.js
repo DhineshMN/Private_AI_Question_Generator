@@ -9,6 +9,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Import models
 const Question = require('./database/models/Question');
 const SME = require('./database/models/SME');
+const User = require('./database/models/User');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +25,64 @@ mongoose.connection.on('disconnected', () => console.log('⚠️ Mongoose discon
 mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
     .then(() => console.log('✅ Connected to MongoDB (Compass)'))
     .catch((err) => console.error('❌ MongoDB Connection Error:', err));
+
+// =============================================
+// AUTH ROUTES
+// =============================================
+
+// Signup
+app.post('/api/auth/signup', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        // Check if user already exists
+        const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+        if (existingUser) {
+            return res.status(400).json({ error: 'An account with this email already exists' });
+        }
+
+        const user = new User({ email, password });
+        await user.save();
+
+        console.log(`✅ New user registered: ${email}`);
+        res.status(201).json({ message: 'Account created successfully', user: { email: user.email, role: user.role } });
+    } catch (err) {
+        console.error('❌ Signup Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+
+        console.log(`✅ User logged in: ${email}`);
+        res.json({ message: 'Login successful', user: { email: user.email, role: user.role } });
+    } catch (err) {
+        console.error('❌ Login Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Routes
 app.get('/api/questions', async (req, res) => {
