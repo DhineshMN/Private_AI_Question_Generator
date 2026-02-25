@@ -39,6 +39,8 @@ mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
 // =============================================
 // AUTH ROUTES
 // =============================================
+
+// Signup
 app.post('/api/auth/signup', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -62,6 +64,7 @@ app.post('/api/auth/signup', async (req, res) => {
     }
 });
 
+// Login
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -221,7 +224,7 @@ app.delete('/api/questions/session/:sessionId', async (req, res) => {
     }
 });
 
-// Settings - Save API Key to Server .env (Legacy - keeping for fallback)
+// Settings - Save API Key to Server .env
 app.post('/api/settings/save-key', async (req, res) => {
     try {
         const { apiKey, model } = req.body;
@@ -248,14 +251,16 @@ app.post('/api/settings/save-key', async (req, res) => {
         };
 
         // Update environment variables
-        envContent = updateEnv(envContent, 'VITE_GROQ_API_KEY', apiKey); // Use VITE_ prefix for frontend
-        envContent = updateEnv(envContent, 'VITE_GROQ_MODEL', model || 'llama-3.3-70b-versatile');
+        envContent = updateEnv(envContent, 'VITE_GROQ_API_KEY', apiKey);
+        if (model) envContent = updateEnv(envContent, 'VITE_GROQ_MODEL', model);
 
-        fs.writeFileSync(clientEnvPath, envContent);
+        fs.writeFileSync(clientEnvPath, envContent.trim() + '\n');
 
-        res.json({ message: 'Settings saved to server successfully', model });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.log(`✅ API: Updated client/.env with new Groq Key at ${clientEnvPath}`);
+        res.json({ message: 'Settings saved to client configuration successfully' });
+    } catch (error) {
+        console.error('❌ Failed to save .env:', error);
+        res.status(500).json({ error: 'Failed to save settings to server storage' });
     }
 });
 
@@ -266,12 +271,6 @@ app.post('/api/settings/save-key', async (req, res) => {
 // Get all SMEs
 app.get('/api/smes', async (req, res) => {
     try {
-        // Exclude the raw apiKey from the GET response generally,
-        // but since this is an admin tool we might need it for generation 
-        // if requested directly. However, for security, the frontend should just 
-        // reference the SME ID and send the ID to the backend for generation.
-        // Wait, the current architecture does generation from the FRONTEND.
-        // So the frontend NEEDS the api keys.
         const smes = await SME.find().sort({ createdAt: -1 });
         res.json(smes);
     } catch (err) {
@@ -315,7 +314,7 @@ app.delete('/api/smes/:id', async (req, res) => {
     }
 });
 
-// Update an SME (specifically for Model, but allows other fields)
+// Update an SME
 app.put('/api/smes/:id', async (req, res) => {
     try {
         const updates = {};
@@ -337,81 +336,10 @@ app.put('/api/smes/:id', async (req, res) => {
     }
 });
 
-app.post('/api/settings/save-key', async (req, res) => {
-    try {
-        const { apiKey, model } = req.body;
-        if (!apiKey) return res.status(400).json({ error: 'API Key is required' });
-
-        const fs = require('fs');
-        // TARGET THE CLIENT FOLDER, NOT SERVER FOLDER
-        const clientEnvPath = path.join(__dirname, '../client/.env');
-
-        // Read existing file or create empty
-        let envContent = '';
-        if (fs.existsSync(clientEnvPath)) {
-            envContent = fs.readFileSync(clientEnvPath, 'utf8');
-        }
-
-        // Helper to update specific key
-        const updateEnv = (content, key, val) => {
-            const regex = new RegExp(`^${key}=.*`, 'm');
-            if (regex.test(content)) {
-                return content.replace(regex, `${key}=${val}`);
-            } else {
-                return content + `\n${key}=${val}`;
-            }
-        };
-
-        // Update environment variables
-        envContent = updateEnv(envContent, 'VITE_GROQ_API_KEY', apiKey); // Use VITE_ prefix for frontend
-        if (model) envContent = updateEnv(envContent, 'VITE_GROQ_MODEL', model);
-
-        fs.writeFileSync(clientEnvPath, envContent.trim() + '\n');
-
-        console.log(`✅ API: Updated client/.env with new Groq Key at ${clientEnvPath}`);
-        res.json({ message: 'Settings saved to client configuration successfully' });
-    } catch (error) {
-        console.error('❌ Failed to save .env:', error);
-        res.status(500).json({ error: 'Failed to save settings to server storage' });
-    }
-});
-
 app.put('/api/questions/:id', async (req, res) => {
     try {
         const updated = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
         res.json({ message: 'Question updated successfully', data: updated });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// SME Management Routes
-app.get('/api/smes', async (req, res) => {
-    try {
-        const smes = await SME.find().sort({ createdAt: -1 });
-        res.json(smes);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/smes', async (req, res) => {
-    try {
-        const { name, apiKey, model } = req.body;
-        if (!name || !apiKey) return res.status(400).json({ error: 'Name and API Key are required' });
-
-        const newSme = new SME({ name, apiKey, model });
-        await newSme.save();
-        res.status(201).json({ message: 'SME profile saved successfully', data: newSme });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/smes/:id', async (req, res) => {
-    try {
-        await SME.findByIdAndDelete(req.params.id);
-        res.json({ message: 'SME profile deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

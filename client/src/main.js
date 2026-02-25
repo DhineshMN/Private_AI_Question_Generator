@@ -138,7 +138,7 @@ function renderHomePage() {
       <!-- LEFT: Branding & Features -->
       <div style="flex: 1; max-width: 520px;">
         <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 36px;">
-          <div class="logo-icon" style="width: 64px; height: 64px; border-radius: 18px; font-size: 1.8rem; flex-shrink: 0;">🧠</div>
+          <div class="logo-icon" style="width: 96px; height: 96px; border-radius: 24px; font-size: 2.8rem; flex-shrink: 0;">🧠</div>
           <h1 style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin: 0; line-height: 1.3; text-align: center;">AI Question Generator</h1>
         </div>
 
@@ -148,7 +148,7 @@ function renderHomePage() {
 
         <div style="display: flex; flex-direction: column; gap: 20px;">
           <div style="display: flex; align-items: flex-start; gap: 14px;">
-            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">✨</div>
+            <div style="width: 56px; height: 56px; border-radius: 14px; background: rgba(99, 102, 241, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0;">✨</div>
             <div>
               <div style="font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 3px;">AI-Powered Generation</div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Generate exam-quality MCQs and coding challenges using LLMs with detailed explanations.</div>
@@ -157,7 +157,7 @@ function renderHomePage() {
 
 
           <div style="display: flex; align-items: flex-start; gap: 14px;">
-            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(6, 182, 212, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">📄</div>
+            <div style="width: 56px; height: 56px; border-radius: 14px; background: rgba(6, 182, 212, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0;">📄</div>
             <div>
               <div style="font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 3px;">Multi-Format Export</div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Export questions as PDF, Excel, ZIP, or Markdown — ready for exams and assessments.</div>
@@ -165,7 +165,7 @@ function renderHomePage() {
           </div>
 
           <div style="display: flex; align-items: flex-start; gap: 14px;">
-            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(16, 185, 129, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">👥</div>
+            <div style="width: 56px; height: 56px; border-radius: 14px; background: rgba(16, 185, 129, 0.12); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0;">👥</div>
             <div>
               <div style="font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 3px;">Multi-User Access</div>
               <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">Secure login with role-based access. Each SME gets their own profile and API key.</div>
@@ -239,7 +239,7 @@ function renderHomePage() {
 
     <div id="selection-view" class="home-container" style="display: none;">
       <div class="home-logo" style="margin-bottom: 0;">
-        <div class="logo-icon" style="width: 50px; height: 50px; border-radius: 14px; font-size: 1.4rem;">🧠</div>
+        <div class="logo-icon" style="width: 80px; height: 80px; border-radius: 20px; font-size: 2.2rem;">🧠</div>
         <h1 class="home-title" style="font-size: 1.5rem;">Configure Your Test</h1>
       </div>
 
@@ -378,23 +378,15 @@ function renderAdminPage() {
           </div>
 
           <div class="dashboard-grid">
-            <!-- SME Contributions Section (Primary) -->
-            <div class="card card-glass sme-card-v2">
-              <div class="card-header-v2">
-                <div class="card-header-left">
-                  <span class="card-icon-v2">✍️</span>
-                  <div>
-                    <p class="card-title-v2">SME Leaderboard</p>
-                    <p class="card-subtitle-v2">Expert contributions to the question bank</p>
-                  </div>
-                </div>
-                <div class="search-box-v2">
-                  <input type="text" id="sme-search" placeholder="Filter by expert...">
-                </div>
+            <!-- Recent Activity Column (Primary) -->
+            <div class="card card-glass">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <p class="card-title" style="margin-bottom: 0;">⚡ Recent Activity</p>
+                <button class="btn btn-secondary btn-sm" id="view-all-questions-btn">View All</button>
               </div>
-              <div class="sme-list-v2" id="dashboard-sme-stats">
-                <div class="loading-state">
-                  <span class="spinner-sm"></span> Syncing experts...
+              <div id="dashboard-recent-activity">
+                <div style="opacity: 0.7; padding: 40px; text-align: center;">
+                  <span class="spinner-sm"></span> Syncing activity...
                 </div>
               </div>
             </div>
@@ -433,19 +425,6 @@ function renderAdminPage() {
                     <span>API Endpoint</span>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Recent Activity -->
-          <div class="card card-glass" style="margin-top: 24px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-              <p class="card-title" style="margin-bottom: 0;">⚡ Recent Activity</p>
-              <button class="btn btn-secondary btn-sm" id="view-all-questions-btn">View All</button>
-            </div>
-            <div id="dashboard-recent-activity">
-              <div style="opacity: 0.7; padding: 40px; text-align: center;">
-                <span class="spinner-sm"></span> Syncing activity...
               </div>
             </div>
           </div>
@@ -1750,7 +1729,7 @@ async function handleGenerateClick() {
   const category = document.getElementById('gen-category').value;
   const subtopic = document.getElementById('gen-subtopic').value;
   const specificTopic = document.getElementById('gen-topic').value.trim();
-  const activeSegment = document.querySelector('.type-segment.active');
+  const activeSegment = document.querySelector('#gen-type-toggle .type-segment.active');
   const type = activeSegment ? activeSegment.dataset.value : 'mcq';
   const difficulty = document.getElementById('gen-difficulty').value;
   const count = parseInt(document.getElementById('gen-count').value);
@@ -2053,7 +2032,7 @@ Return ONLY a JSON object:
       category,
       subtopic,
       smeName,
-      difficulty: difficulty.charAt(0).toUpperCase() + difficulty.slice(1)
+      difficulty: difficulty.toLowerCase()
     }));
   } catch (e) {
     console.error("AI Response Content:", content);
@@ -3673,42 +3652,6 @@ async function updateDashboardStats() {
 
       if (mixMcqLabel) mixMcqLabel.textContent = `MCQs: ${Math.round(mcqPercent)}%`;
       if (mixCodingLabel) mixCodingLabel.textContent = `Coding: ${Math.round(codingPercent)}%`;
-    }
-
-    // Update SME Leaderboard (New v2)
-    if (smeContainer && data.smeStats) {
-      const renderSMEs = (filter = '') => {
-        const filtered = data.smeStats.filter(s => (s._id || 'System Default').toLowerCase().includes(filter.toLowerCase()));
-        if (filtered.length === 0) {
-          smeContainer.innerHTML = `<div class="empty-state-v2">No experts found matching "${filter}"</div>`;
-        } else {
-          smeContainer.innerHTML = filtered.map((sme, idx) => `
-            <div class="sme-item-v2" style="animation-delay: ${idx * 0.05}s">
-              <div class="sme-info-v2">
-                <div class="sme-avatar-v2">${(sme._id || 'S')[0].toUpperCase()}</div>
-                <div>
-                  <div class="sme-name-v2">${sme._id || 'System Default'}</div>
-                  <div class="sme-rank-v2">Level ${Math.floor(sme.count / 5) + 1} Contributor</div>
-                </div>
-              </div>
-              <div class="sme-badge-v2">
-                <span class="count-v2">${sme.count}</span>
-                <span class="label-v2">Questions</span>
-              </div>
-            </div>
-          `).join('');
-        }
-      };
-
-      renderSMEs();
-
-      if (smeSearch) {
-        let debounceTimer;
-        smeSearch.oninput = (e) => {
-          clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => renderSMEs(e.target.value), 150);
-        };
-      }
     }
 
     // Update Recent Activity
