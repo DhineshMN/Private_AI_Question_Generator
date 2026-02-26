@@ -1043,12 +1043,21 @@ function attachHomeListeners() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Signup failed');
 
-      showAuthMessage('success', 'Account created! Logging you in...');
-      // Auto-login after signup
+      showAuthMessage('success', 'Account created successfully! Please sign in with your credentials.');
+      // Switch back to login tab after success
       setTimeout(() => {
-        showToast('success', `Welcome, ${data.user.email}!`);
-        enterAdminPanel();
-      }, 1000);
+        const loginTab = Array.from(document.querySelectorAll('#auth-mode-toggle .type-segment'))
+          .find(el => el.dataset.value === 'login');
+        if (loginTab) loginTab.click();
+
+        // Pre-fill the login email for convenience
+        const loginEmail = document.getElementById('login-email');
+        if (loginEmail) loginEmail.value = email;
+
+        // Focus password field on the login form
+        const loginPass = document.getElementById('login-password');
+        if (loginPass) loginPass.focus();
+      }, 2000);
     } catch (err) {
       showAuthMessage('error', err.message);
     } finally {
