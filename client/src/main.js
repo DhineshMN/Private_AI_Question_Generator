@@ -1798,17 +1798,19 @@ async function handleGenerateClick() {
   }
 }
 
-async function generateAIQuestions(topic, type, difficulty, count, category, subtopic, smeName) {
+async function generateAIQuestions(topic, type, difficulty, count, category, subtopic, smeName, apiKey, model) {
   const isMcq = type === 'mcq';
 
   // Advanced Difficulty Calibration (Perfect Fine-Tune)
   const difficultyContext = {
-    easy: 'Objective: Foundational logic. Difficulty: Iterative (O(N) or O(1)). Scope: Basic syntax, loops, and conditional logic. Minimize recursion/complex structures.',
-    medium: 'Objective: Professional efficiency. Difficulty: O(N log N) or O(N). Scope: Advanced collections, trees, sorting, and multi-pointer logic. Must include edge calculations.',
-    hard: 'Objective: Competitive standard. Difficulty: O(log N) or O(N). Scope: DP (Dynamic Programming), Graph algorithms, complex data structures (Interval trees, Segment trees), and extreme performance constraints.'
-  }[difficulty] || 'General technical knowledge';
+    easy: 'Objective: Foundational mastery. Difficulty: O(1) or O(N). Focus on basic syntax, elementary control flow, and standard library usage. Avoid advanced design patterns or complex recursion.',
+    medium: 'Objective: Engineering proficiency. Difficulty: O(N) or O(N log N). Focus on data structures (Trees, Linked Lists, HashMaps), intermediate algorithms, and modular design. Require handling of edge cases and performance tradeoffs.',
+    hard: 'Objective: Architectural excellence. Difficulty: O(log N) or niche optimal solutions. Focus on advanced DP, Graph theory, concurrency, low-level optimizations, and complex system design. Must involve multiple interacting constraints.'
+  }[difficulty] || 'General technical excellence';
 
-  const isFramework = ['react', 'angular', 'vue', 'next', 'django', 'flask', 'spring', 'express', 'laravel', 'rails', 'stack', 'framework'].some(f => topic.toLowerCase().includes(f));
+
+  const isFramework = (category === 'stacks' || category === 'frameworks' || ['react', 'angular', 'vue', 'next', 'django', 'flask', 'spring', 'express', 'laravel', 'rails', 'stack', 'framework'].some(f => topic.toLowerCase().includes(f)));
+
 
   // Language Specific Boilerplate Provider
   const getBoilerplate = (lang) => {
@@ -1822,19 +1824,62 @@ async function generateAIQuestions(topic, type, difficulty, count, category, sub
     return '// Starter code template\nfunction solution(input) {\n}';
   };
 
-  const industries = ['FinTech', 'HealthTech', 'E-commerce', 'Cybersecurity', 'GameDev', 'SaaS', 'EdTech', 'Logistics', 'Robotics', 'Web3', 'AI/ML', 'GreenTech', 'SpaceTech', 'AgriTech'];
-  const perspectives = ['Performance-obsessed Tech Lead', 'Security-first Architect', 'Developer Experience (DX) Advocate', 'Scalability Engineer', 'Budget-conscious Startup CTO', 'Legacy System Modernization Specialist', 'Accessibility Expert', 'Machine Learning Engineer'];
-  const focuses = ['Edge Cases & Error Handling', 'Memory Efficiency', 'Maintainability & Readability', 'Security & Input Sanitization', 'High-throughput Scalability', 'Advanced Design Patterns', 'Unit Testing Coverage', 'Cross-browser Compatibility'];
-  const taskTypes = ['Bug Fix / Debugging', 'Feature Implementation From Scratch', 'Performance Optimization / Refactoring', 'Data Processing / Transformation', 'Security Hardening', 'Architecture Setup', 'API Integration', 'UI/UX Polish'];
+  const industries = [
+    'FinTech (Banking, Trading)', 'HealthTech (Telemedicine, Records)', 'E-commerce (Marketplaces, B2B)',
+    'Cybersecurity (Threat Detection)', 'GameDev (Multiplayer, Physics)', 'SaaS (ERP, CRM Systems)',
+    'EdTech (LMS, Learning Analytics)', 'Logistics (Supply Chain, Fleet)', 'Robotics (Control, Computer Vision)',
+    'Web3 (DeFi, DAOs)', 'AI/ML (Large Language Models, Gen AI)', 'GreenTech (Energy Monitoring)',
+    'SpaceTech (Satellite Data)', 'AgriTech (Precision Farming)', 'GovTech (Public Services)',
+    'SocialMedia (Content Feeds, Graph)', 'AdTech (Real-time Bidding)', 'AutoTech (Autonomous Driving)',
+    'TravelTech (Booking Engines)', 'FoodTech (Delivery Logistics)'
+  ];
+  const perspectives = [
+    'Performance-obsessed Tech Lead', 'Security-first Cloud Architect', 'Developer Experience (DX) Advocate',
+    'Scalability Engineer', 'Budget-conscious Startup CTO', 'Legacy System Modernization Specialist',
+    'Accessibility Expert (WCAG)', 'Machine Learning Engineer', 'SRE / DevOps Lead',
+    'Open Source Maintainer', 'Data Integrity Specialist', 'Microservices Expert'
+  ];
+  const focuses = [
+    'Edge Cases & Error Handling', 'Memory Efficiency & Footprint', 'Maintainability & Clean Code',
+    'Security & Input Sanitization', 'High-throughput Scalability', 'Advanced Design Patterns',
+    'Unit Testing Coverage & Quality', 'Cross-browser / Platform Compatibility', 'Network Latency & Optimization',
+    'State Management Efficiency', 'Concurrency & Race Conditions', 'Schema / Typings Robustness'
+  ];
+  const taskTypes = [
+    'Bug Fix / Debugging (Finding the Root Cause)', 'Feature Implementation From Scratch',
+    'Performance Optimization / Refactoring (O-notation improvement)', 'Data Processing / Transformation Pipelines',
+    'Security Hardening (Encryption, Auth)', 'Architecture Setup (Modular Design)',
+    'API Integration (Third-party, Internal)', 'UI/UX Polish (Animations, Responsiveness)',
+    'Database Schema Migration', 'Micro-interaction Implementation'
+  ];
 
-  // Difficulty-specific constraints
-  const difficultyRules = {
-    easy: "Focus on fundamental concepts, clear terminology, and single-step logic. Questions should be direct.",
-    medium: "Introduce multi-step thinking, common pitfalls, and architectural tradeoffs. Mix definitions with application.",
-    hard: "Deep-dive into internals, edge cases, distributed system bottlenecks, and advanced optimizations. Require synthesizing multiple concepts."
+  // Refined Difficulty-specific constraints with Category Awareness
+  const getDifficultyRule = (diff, cat) => {
+    const base = {
+      easy: "STRICT EASY: Focus on 101-level concepts. Avoid complex nesting or abstract theories. Scenarios should be single-variable and direct.",
+      medium: "STRICT MEDIUM: Scenarios should involve professional tradeoffs, modular thinking, and handling of standard edge cases (missing data, large inputs).",
+      hard: "STRICT HARD: Deep-dive into architectural bottlenecks, extreme edge cases, and high-concurrency or low-latency constraints. Require synthesizing multiple advanced patterns."
+    }[diff] || "";
+
+    if (cat === 'dsa') return `${base} MANDATORY: Explicitly mention Space/Time complexity requirements.`;
+    if (cat === 'frameworks') return `${base} MANDATORY: Focus on the framework's internal lifecycle and performance patterns.`;
+    return base;
   };
 
+  const diffRule = getDifficultyRule(difficulty, category);
+
+
+  // Category-specific logic refinement (Sync with UI values)
+  const categoryRules = {
+    'languages': "Focus on language-specific syntax, standard library features, memory management, and idiomatic patterns.",
+    'subjects': "Focus on core computer science foundations like Operating Systems, DBMS, Computer Networks, or Software Engineering.",
+    'stacks': "Focus on full-stack integration, environment configuration, database connectivity, and end-to-end data flow.",
+    'frameworks': "Focus on framework-specific lifecycles, component design, state management, and production-level best practices."
+  }[category] || "Focus on professional technical standards and real-world application.";
+
+
   const complexityModifiers = [
+
     "Include an additional constraint regarding time complexity.",
     "Add a requirement for a specific design pattern to be mentioned in the strategy.",
     "Describe a specific error scenario that must be handled.",
@@ -1846,9 +1891,104 @@ async function generateAIQuestions(topic, type, difficulty, count, category, sub
   const persona = perspectives[Math.floor(Math.random() * perspectives.length)];
   const techFocus = focuses[Math.floor(Math.random() * focuses.length)];
   const challengeType = taskTypes[Math.floor(Math.random() * taskTypes.length)];
-  const diffRule = difficultyRules[difficulty] || "";
   const modifier = complexityModifiers[Math.floor(Math.random() * complexityModifiers.length)];
+
   const variationId = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+  const frameworkTemplate = topic.toLowerCase().includes('react') ?
+    `MANDATORY ENTERPRISE REACT ARCHITECTURE (20+ FILES MINIMUM):
+     [project-name]
+     ├── e2e/                          // Full End-to-End Test Suite
+     │   ├── tests/
+     │   │   ├── app.spec.ts
+     │   ├── playwright.config.ts
+     ├── public/
+     │   ├── index.html                // SPA Root
+     │   ├── favicon.ico
+     │   ├── manifest.json
+     ├── src/
+     │   ├── components/               // Modular Component Architecture
+     │   │   ├── layout/
+     │   │   │   ├── Header.tsx
+     │   │   │   ├── Footer.tsx
+     │   │   ├── [feature-1]/
+     │   │   │   ├── [feature-1].tsx
+     │   │   │   ├── [feature-1].module.css
+     │   │   │   ├── [feature-1].test.tsx
+     │   │   ├── [feature-2]/
+     │   │   │   ├── [feature-2].tsx
+     │   │   │   ├── [feature-2].module.css
+     │   │   │   ├── [feature-2].test.tsx
+     │   ├── hooks/                    // Custom React Hooks
+     │   │   ├── useLocalStorage.ts
+     │   │   ├── useApi.ts
+     │   ├── services/                 // API & Business Logic
+     │   │   ├── api.service.ts
+     │   │   ├── auth.service.ts
+     │   ├── store/                    // State Management
+     │   │   ├── index.ts
+     │   ├── types/                    // Global Type Definitions
+     │   │   ├── index.d.ts
+     │   ├── utils/                    // Helper functions
+     │   │   ├── formatters.ts
+     │   ├── App.tsx                   // Main App Component
+     │   ├── App.css
+     │   ├── main.tsx                  // Bootstrap
+     │   ├── index.css                 // Global Styles
+     ├── .env.example                  // Env Template
+     ├── .gitignore
+     ├── package.json                  // Production-Ready Dependencies
+     ├── tsconfig.json                 // Strict TS Config
+     ├── vite.config.ts                // Build Config
+     ├── README.md                     // Professional Documentation` :
+    `MANDATORY ENTERPRISE ANGULAR/GENERIC ARCHITECTURE (20+ FILES MINIMUM):
+     [project-name]
+     ├── e2e/                          // Protractor/Cypress Suite
+     │   ├── src/
+     │   │   ├── app.e2e-spec.ts
+     ├── src/
+     │   ├── app/                      // Root Module
+     │   │   ├── app.component.ts
+     │   │   ├── app.component.html
+     │   │   ├── app.component.css
+     │   │   ├── app.component.spec.ts
+     │   │   ├── app.module.ts
+     │   │   ├── app-routing.module.ts
+     │   │   ├── core/                 // Singleton Services
+     │   │   │   ├── auth.service.ts
+     │   │   ├── shared/               // Common Components/Pipes
+     │   │   │   ├── shared.module.ts
+     │   │   ├── features/             // Feature-Based Modules
+     │   │   │   ├── [feature-1]/
+     │   │   │   │   ├── [feature-1].component.ts
+     │   │   │   │   ├── [feature-1].component.html
+     │   │   │   │   ├── [feature-1].component.css
+     │   │   │   │   ├── [feature-1].component.spec.ts
+     │   │   │   ├── [feature-2]/
+     │   │   │   │   ├── [feature-2].component.ts
+     │   │   ├── models/               // Data Interfaces
+     │   │   │   ├── user.model.ts
+     │   ├── assets/                   // Global Assets
+     │   │   ├── i18n/
+     │   │   │   ├── en.json
+     │   ├── environments/             // Multi-Env Support
+     │   │   ├── environment.ts
+     │   │   ├── environment.prod.ts
+     │   ├── index.html
+     │   ├── main.ts
+     │   ├── polyfills.ts
+     │   ├── styles.css
+     ├── package.json
+     ├── tsconfig.json
+     ├── .env.example
+     ├── angular.json
+     ├── README.md`;
+
+
+  let diffContextStr = difficultyContext[difficulty] || 'General technical excellence';
+  if (isFramework) {
+    diffContextStr += " CRITICAL: Framework projects MUST always use the deep enterprise directory structure provided below, even for Easy tasks. Configuration files (tsconfig, package.json, etc.) are non-negotiable.";
+  }
 
   const prompt = isMcq ?
     `Your Persona: ${persona}. 
@@ -1858,14 +1998,16 @@ Technical Emphasis: ${techFocus}.
 VARIATION ID: ${variationId}.
 
 Generate ${count} MCQ questions. REQUIREMENTS:
+- CATEGORY ALIGNMENT: This is for the "${category.toUpperCase()}" category. ${categoryRules}
 - DIFFICULTY CALIBRATION: ${diffRule}
 - Use your Persona to influence the wording and scenario.
 - Focus on the Technical Emphasis where relevant.
 - Technically perfect, zero ambiguity
 - Detailed "Smart Explanations" that explain "Why A is right" AND "Why others are wrong"
 - Professional tone, similar to AWS/GCP certification exams
-- NOVELTY: Avoid common/cliché questions. Create unique scenarios.
-- VARIATION SEED: ${Date.now()}-${Math.random()}
+- NOVELTY MANDATE: Forbidden to use common "Introduction to [Topic]" questions. Create unique, weird, or highly specific enterprise scenarios.
+- VARIATION SEED: ${Date.now()}-${Math.random()}-${Math.floor(Math.random() * 1000000)}
+
 
 Return ONLY a JSON object:
   {
@@ -1886,9 +2028,12 @@ Industry Context: ${flavor}.
 Technical Emphasis: ${techFocus}.
 Challenge Type: ${challengeType}.
 Difficulty: ${difficulty.toUpperCase()}. VARIATION ID: ${variationId}.
+STRICT CONTEXT: ${diffContextStr}
 
 Generate ${count} challenge(s). QUALITY STANDARDS:
-1. COMPREHENSIVE DESCRIPTION (MANDATORY STRUCTURE): 
+1. CATEGORY ALIGNMENT:
+   - This is for the "${category.toUpperCase()}" category. ${categoryRules}
+2. COMPREHENSIVE DESCRIPTION (MANDATORY STRUCTURE): 
    - A single Markdown string with:
      ## 🌐 Project Context
   [Explain the real - world scenario]
@@ -1897,23 +2042,42 @@ Generate ${count} challenge(s). QUALITY STANDARDS:
      ## 🛠️ Technical Requirements
   [List specific libraries, patterns, or algorithms to use]
   - The learner must be able to complete the project using ONLY this description.
-2. STARTER SYNC(MANDATORY):
-  - 'starterCode' MUST have a functional code entry for EVERY single file mentioned in your 'projectStructure' tree.
-   - ** ZERO DEBT **: Do not omit any files.If a file is shown in the tree view, its full boilerplate must be present in the JSON object.
-   - Include a comprehensive 'package.json' with all necessary dependencies.
-   - Code must be high - quality, include all necessary imports / configs, and follow professional patterns.
-3. WORKING BOILERPLATE(WITHOUT LOGIC):
-  - Structural files(configs, types, basic routing, package.json) must be PROVIDED and WORKING.
-   - ** THE ABSOLUTE MINIMALIST RULE **: Every component / logic file MUST be strictly less than 15 lines of code.
-   - ** LOGIC STRIPPING **: Provide ONLY the component signature and total empty stubs.
-   - ** FORBIDDEN **: Do NOT provide UI layout, JSX loops, state management, or business logic.
+2. PROJECT STRUCTURE EXCELLENCE (MANDATORY - CRITICAL FAILURE IF SIMPLIFIED):
+   - Provide a professional, production-ready directory hierarchy. FORBIDDEN to simplify.
+   - MANDATORY ARCHITECTURE: You MUST use a modular, multi-folder structure.
+   - ** QUANTITY RULE **: Framework projects MUST contain at least 20-30 discrete files.
+   - USE THIS EXACT TEMPLATE (Scale with difficulty):
+     ${frameworkTemplate}
+   - Every feature MUST have its own dedicated folder.
+   - Every component MUST have its own separate logic, style, and test files.
+   - ** NO PLACEHOLDERS **: Never use "..." or "etc." in the tree. List EVERY file.
+   - CRITICAL: If you generate a structure like "src/components/File.tsx" (flat list), you have FAILED. 
+   - The 'projectStructure' field MUST reflect this EXACT level of thoroughness.
+   - NEATNESS: Use standard ASCII symbols (├──, └──, │) with perfect vertical alignment.
+   - DIFFICULTY MAPPING: Complexity and depth MUST scale with difficulty (${difficulty.toUpperCase()}).
+
+3. STARTER SYNC & COMPLETENESS (MANDATORY - NON-NEGOTIABLE):
+   - 'starterCode' MUST contain a functional code entry for EVERY single file mentioned in your 'projectStructure' tree.
+   - ** 20+ FILES REQUIRED **: If you provide fewer than 20 files in 'starterCode', the task is incomplete.
+   - ** ABSOLUTE ZERO DEBT **: If a file exists in the tree (e.g., polyfills.ts, tsconfig.json, environments/environment.ts), its full content MUST be in the 'starterCode' object.
+   - FORBIDDEN: Do not use placeholders like "// ...rest of file". You MUST provide the full, working boilerplate.
+   - Include a comprehensive 'package.json' with all necessary dependencies, devDependencies, and standard build/test scripts.
+   - All environment variables needed must be documented in '.env.example'.
+   - Code must follow professional enterprise patterns with proper imports and exports.
+
+
+
+4. WORKING BOILERPLATE (WITHOUT BUSINESS LOGIC):
+   - Structural files (configs, types, basic routing, package.json) must be PROVIDED and WORKING.
+   - ** LOGIC STRIPPING **: Component and logic files should provide the structure and boilerplate but leave the core logic for the student.
+   - Provide only the component signature and total empty stubs for the core tasks.
    - Leave clear "// TODO" sections for the student.
-4. NOVELTY & VARIETY (CRITICAL):
+5. NOVELTY & VARIETY (CRITICAL):
    - DIFFICULTY CALIBRATION: ${diffRule}
    - COMPLEXITY MODIFIER: ${modifier}
    - Use a unique real-world scenario every time.
    - VARIATION SEED: ${Date.now()}-${Math.random()}
-  - Avoid generic "Todo List" or "Counter" apps unless explicitly requested.
+   - Avoid generic "Todo List" or "Counter" apps unless explicitly requested.
 
 Return ONLY a JSON object:
   {
@@ -1921,11 +2085,18 @@ Return ONLY a JSON object:
       {
         "title": "Project Title",
         "description": "Comprehensive Markdown string with ## Context, ## Task, and ## Requirements headers.",
-        "projectStructure": "ASCII Tree View (MANDATORY FORMAT):\n.\n├── src\n│   ├── ...",
+        "projectStructure": "Deep, 25+ line ASCII Tree View reflecting production standards (MANDATORY).",
+
         "starterCode": {
-          "src/components/Task.tsx": "import React from 'react';\n\nexport const Task = ({ data }) => {\n  // TODO: Implement the Task rendering logic\n  return <div className='task-item'>{/* UI Placeholder */}</div>;\n};",
-          "package.json": "{...}"
+          "src/app/app.component.ts": "...",
+          "src/app/app.component.html": "...",
+          "src/app/app.module.ts": "...",
+          "package.json": "...",
+          "tsconfig.json": "...",
+          "README.md": "...",
+          "...+20 more files": "..."
         },
+
         "input": "User Scenario",
         "output": "Expected Result",
         "examples": [{ "input": "...", "output": "...", "explanation": "..." }],
@@ -1948,27 +2119,30 @@ Challenge Type: ${challengeType}.
 Complexity: ${difficulty.toUpperCase()} (${difficultyContext}). VARIATION ID: ${variationId}.
 
 Generate ${count} challenge(s). CRYSTAL CLEAR QUALITY STANDARDS:
-1. PROBLEM DESCRIPTION (STRING ONLY):
+1. CATEGORY ALIGNMENT:
+   - This is for the "${category.toUpperCase()}" category. ${categoryRules}
+2. PROBLEM DESCRIPTION (STRING ONLY):
   - MUST be a single string using Markdown.
   - Learner should understand EXACTLY what to do from this description alone.
    - Separate into "Context", "Task", and "Technical Goal".
    - Use Markdown strictly(ticks for variable names, bold for emphasis).
-2. EXAMPLES(MANDATORY 2 - 3):
+3. EXAMPLES(MANDATORY 2 - 3):
   - Every example MUST have: 'Input', 'Output', and a 'Detailed Explanation' of how the result was derived.
-3. CONSTRAINTS(MANDATORY):
+4. CONSTRAINTS(MANDATORY):
   - Provide a technical constraints list(e.g., Array length, Value ranges).
-4. STARTER CODE(ABSOLUTE MINIMALIST SKELETON):
+5. STARTER CODE(ABSOLUTE MINIMALIST SKELETON):
   - Provide VALID and FUNCTIONAL signature / template.
    - ** LOGIC STRIPPING RULE(MANDATORY) **: DO NOT provide even a single line of logic inside functions or classes.
    - ** FORBIDDEN **: No initialization of variables, no loops, no if-statements, no helper logic.
    - ONLY provide the 'def', 'class', or 'interface' declaration and a single TODO comment.
    - Use 'pass'(Python), 'null'(Java / JS), or 'return 0/[]' as absolute bare minimums.
-5. NOVELTY & RANDOMIZATION (CRITICAL):
+6. NOVELTY & RANDOMIZATION (CRITICAL):
    - DIFFICULTY CALIBRATION: ${diffRule}
    - COMPLEXITY MODIFIER: ${modifier}
    - Create UNIQUE scenarios. Avoid overused clones.
    - VARIATION SEED: ${Date.now()}-${Math.random()}
   - Introduce unexpected constraints or data formats to force creative logic.
+
 
 Return ONLY a JSON object:
   {
@@ -1998,10 +2172,10 @@ Return ONLY a JSON object:
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${state.groqKey} `
+      'Authorization': `Bearer ${apiKey || state.groqKey}`
     },
     body: JSON.stringify({
-      model: state.groqModel,
+      model: model || state.groqModel,
       messages: [
         { role: 'system', content: 'You are an expert technical SME and software architect. You output ONLY valid JSON with no markdown formatting.' },
         { role: 'user', content: prompt }
@@ -2435,33 +2609,33 @@ function showQuestionDetailModal(q, type, onSave) {
         </div>
 
         ${type === 'mcq' ? `
-          <div class="form-group" style="margin-top: 20px;">
-            <label class="form-label">Question Text</label>
-            <textarea class="form-input" id="edit-question" style="min-height: 80px;">${q.question}</textarea>
+          <div class="form-group" style="margin-top: 25px;">
+            <label class="form-label" style="font-size: 0.95rem; color: var(--primary-light); margin-bottom: 12px;">Question Content</label>
+            <textarea class="form-input" id="edit-question" style="min-height: 150px; font-size: 1.1rem; line-height: 1.5; padding: 15px;">${q.question}</textarea>
           </div>
-          <div class="form-group" style="margin-top: 20px;">
-            <label class="form-label">Options (Correct option should be selected)</label>
-            <div class="edit-options-list" style="display: grid; gap: 10px;">
+          <div class="form-group" style="margin-top: 25px;">
+            <label class="form-label">Available Options (Select the correct one)</label>
+            <div class="edit-options-list" style="display: grid; gap: 12px; margin-top: 10px;">
               ${q.options.map((opt, i) => `
-                <div style="display: flex; gap: 10px; align-items: center;">
-                  <input type="radio" name="edit-correct" value="${i}" ${q.correct === i ? 'checked' : ''}>
-                  <input type="text" class="form-input edit-opt-val" data-idx="${i}" value="${opt}" style="flex: 1;">
+                <div style="display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                  <input type="radio" name="edit-correct" value="${i}" ${q.correct === i ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+                  <input type="text" class="form-input edit-opt-val" data-idx="${i}" value="${opt}" style="flex: 1; height: 45px; font-size: 1rem;">
                 </div>
               `).join('')}
             </div>
           </div>
-          <div class="form-group" style="margin-top: 20px;">
-            <label class="form-label">Explanation</label>
-            <textarea class="form-input" id="edit-explanation" style="min-height: 80px;">${q.explanation || ''}</textarea>
+          <div class="form-group" style="margin-top: 25px;">
+            <label class="form-label">High-Quality Explanation</label>
+            <textarea class="form-input" id="edit-explanation" style="min-height: 150px; font-size: 1.05rem; line-height: 1.6; padding: 15px;">${q.explanation || ''}</textarea>
           </div>
         ` : `
           <div class="form-group" style="margin-top: 20px;">
             <label class="form-label">Problem Title</label>
             <input type="text" class="form-input" id="edit-title" value="${q.title}">
           </div>
-          <div class="form-group" style="margin-top: 20px;">
-            <label class="form-label">Description (Markdown Supported)</label>
-            <textarea class="form-input" id="edit-desc" style="min-height: 120px;">${typeof q.description === 'object' ? JSON.stringify(q.description, null, 2) : q.description}</textarea>
+          <div class="form-group" style="margin-top: 25px;">
+            <label class="form-label" style="font-size: 0.95rem; color: var(--primary-light); margin-bottom: 12px;">Descriptive Scenario (Markdown Supported)</label>
+            <textarea class="form-input" id="edit-desc" style="min-height: 350px; font-size: 1.05rem; line-height: 1.6; padding: 20px; background: rgba(0,0,0,0.2);">${typeof q.description === 'object' ? JSON.stringify(q.description, null, 2) : q.description}</textarea>
           </div>
 
           ${(q.projectStructure || (q.starterCode && typeof q.starterCode === 'object')) ? `
@@ -2471,26 +2645,26 @@ function showQuestionDetailModal(q, type, onSave) {
                 <span style="font-size: 1.1rem;">📂</span>
                 <span class="editor-section-title">Project Structure (Tree View)</span>
               </div>
-              <div class="editor-project-tree" style="background: #0d0d16; color: #a5b4fc; font-weight: 500;">${(q.starterCode && typeof q.starterCode === 'object') ? buildTreeFromFiles(q.starterCode) : q.projectStructure}</div>
+              <div class="editor-project-tree" style="background: #0d0d16; color: #a5b4fc; font-weight: 500; font-family: var(--font-mono); font-size: 0.85rem; padding: 15px; white-space: pre; overflow-x: auto; line-height: 1.4; border-radius: 6px; border: 1px solid var(--border);">${(q.starterCode && typeof q.starterCode === 'object') ? buildTreeFromFiles(q.starterCode, q.title) : q.projectStructure}</div>
             </div>
           </div>
           ` : ''}
 
-          <div class="form-group" style="margin-top: 24px;">
-            <div class="editor-section-card">
-              <div class="editor-section-header">
-                <span style="font-size: 1.1rem;">💻</span>
-                <span class="editor-section-title">Starter Code ${typeof q.starterCode === 'object' ? '(Multi-File Project)' : ''}</span>
+          <div class="form-group" style="margin-top: 30px;">
+            <div class="editor-section-card" style="border: 1px solid var(--border-active); background: rgba(99, 102, 241, 0.03);">
+              <div class="editor-section-header" style="background: rgba(99, 102, 241, 0.1); padding: 12px 20px;">
+                <span style="font-size: 1.2rem;">💻</span>
+                <span class="editor-section-title" style="font-size: 1rem; font-weight: 700;">Starter Code Implementation ${typeof q.starterCode === 'object' ? '(Enterprise Structure)' : ''}</span>
               </div>
-              <div class="editor-file-list">
+              <div class="editor-file-list" style="padding: 15px;">
                 ${typeof q.starterCode === 'object' ?
       Object.entries(q.starterCode).map(([filename, code]) => `
-                    <div class="editor-file-item">
-                      <div class="editor-file-label">📄 ${filename}</div>
-                      <textarea class="form-input multi-file-code editor-code-area" data-filename="${filename}" placeholder="Code for ${filename}">${code}</textarea>
+                    <div class="editor-file-item" style="margin-bottom: 25px;">
+                      <div class="editor-file-label" style="font-weight: 600; margin-bottom: 10px; color: var(--primary-light);">📄 ${filename}</div>
+                      <textarea class="form-input multi-file-code editor-code-area" data-filename="${filename}" placeholder="Code for ${filename}" style="min-height: 250px; font-family: var(--font-mono); font-size: 0.95rem; line-height: 1.5; padding: 15px;">${code}</textarea>
                     </div>
                   `).join('') : `
-                  <textarea class="form-input editor-code-area" id="edit-starter" style="min-height: 200px;" placeholder="Base starter code...">${q.starterCode || ''}</textarea>
+                  <textarea class="form-input editor-code-area" id="edit-starter" style="min-height: 400px; font-family: var(--font-mono); font-size: 0.95rem; line-height: 1.5; padding: 15px;" placeholder="Base starter code...">${q.starterCode || ''}</textarea>
                 `}
               </div>
             </div>
@@ -3016,7 +3190,7 @@ function submitMCQTest() {
 // =============================================
 // HELPER: Build ASCII tree from starterCode file paths
 // =============================================
-function buildTreeFromFiles(starterCode) {
+function buildTreeFromFiles(starterCode, rootName = '.') {
   if (!starterCode || typeof starterCode !== 'object') return '';
   const files = Object.keys(starterCode);
   if (files.length === 0) return '';
@@ -3039,7 +3213,6 @@ function buildTreeFromFiles(starterCode) {
   // Render ASCII tree
   function renderNode(node, prefix) {
     const entries = Object.keys(node).sort((a, b) => {
-      // Directories first, then files
       const aIsDir = node[a] !== null;
       const bIsDir = node[b] !== null;
       if (aIsDir && !bIsDir) return -1;
@@ -3059,8 +3232,10 @@ function buildTreeFromFiles(starterCode) {
     return result;
   }
 
-  return '.\n' + renderNode(root, '');
+  const cleanRootName = (rootName || '.').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  return cleanRootName + '\n' + renderNode(root, '');
 }
+
 
 function renderCodingProblem() {
   const p = state.problem;
@@ -3128,13 +3303,14 @@ function renderCodingProblem() {
   const structurePanel = document.getElementById('project-structure-panel');
   if (structurePanel) {
     // Prefer auto-generated tree from starterCode keys for accuracy
-    const autoTree = (p.starterCode && typeof p.starterCode === 'object') ? buildTreeFromFiles(p.starterCode) : '';
+    const autoTree = (p.starterCode && typeof p.starterCode === 'object') ? buildTreeFromFiles(p.starterCode, p.title) : '';
+
     const treeContent = autoTree || p.projectStructure || '';
     if (treeContent) {
       structurePanel.style.display = 'block';
       structurePanel.innerHTML = `
         <p style="font-weight: 600; margin: 30px 0 15px 0; font-size: 1rem; color: #fff;">Project Structure:</p>
-        <div class="editor-project-tree" style="background: rgba(13, 13, 26, 0.4); border: 1px solid var(--border);">${treeContent}</div>
+        <div class="editor-project-tree" style="background: rgba(13, 13, 26, 0.4); border: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.85rem; padding: 20px; color: #a5b4fc; white-space: pre; overflow-x: auto; line-height: 1.5; border-radius: 8px;">${treeContent}</div>
       `;
     } else {
       structurePanel.style.display = 'none';
