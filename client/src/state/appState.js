@@ -17,9 +17,23 @@ export const state = {
     codingResults: [],
     codingHints: [],
     selectedTestCaseIndex: 0,
+    activeFile: null,
+    workingCode: {},
     savedQuestions: [],
     lastStatsFetch: 0,
     lastQuestionsFetch: 0,
     lastGenerated: [],
     lastGeneratedType: 'mcq',
+    activeSme: null,
+    smes: [],
+    activeSessionId: null,
+    activeSessionName: null,
+    sessionPendingQuestions: [],
+    mqPagination: {
+        sessionPage: 1,
+        sessionsPerPage: 10,
+        groupPages: {},
+        itemsPerPage: 5
+    },
+    collapsedGroups: {},
 };
